@@ -5,7 +5,8 @@ LLM-powered prompt engineering node for **Z-Image Turbo** workflows in ComfyUI.
 By **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
 ---
-![Sample Screenshot](assets/sample.png)
+
+![Cyberdelia Z-Engineer node in ComfyUI: raw concept input on the left, engineered 200-250 word image prompt output on the right](assets/sample.png)
 
 ## What it does
 
@@ -66,26 +67,26 @@ Interpret the user seed as production intent, then build a definitive 200-250 wo
 
 ### Parameters
 
-| Parameter | Description |
-|-----------|-------------|
-| `clip` | CLIP model from your model / LoRA loader |
-| `mode` | `engineered (LLM)` → calls the LLM; `passthrough (raw)` → uses input text unchanged |
-| `text` | Your concept / seed prompt (this is also what metadata savers will capture) |
-| `system_prompt` | Instructions for the LLM (see recommended prompt above) |
-| `api_url` | OpenAI-compatible base URL, e.g. `http://localhost:1234/v1` |
-| `model` | Model identifier as loaded in your LLM server |
-| `seed` | LLM sampling seed — combine with `control_after_generate` for variation per run |
-| `temperature` | Sampling temperature (`0.0` = deterministic) |
-| `max_tokens` | Output token cap (default `600`) |
-| `timeout` | HTTP timeout in seconds (default `120`) |
+| Parameter       | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `clip`          | CLIP model from your model / LoRA loader                     |
+| `mode`          | `engineered (LLM)` → calls the LLM; `passthrough (raw)` → uses input text unchanged |
+| `text`          | Your concept / seed prompt (this is also what metadata savers will capture) |
+| `system_prompt` | Instructions for the LLM (see recommended prompt above)      |
+| `api_url`       | OpenAI-compatible base URL, e.g. `http://localhost:1234/v1`  |
+| `model`         | Model identifier as loaded in your LLM server                |
+| `seed`          | LLM sampling seed — combine with `control_after_generate` for variation per run |
+| `temperature`   | Sampling temperature (`0.0` = deterministic)                 |
+| `max_tokens`    | Output token cap (default `600`)                             |
+| `timeout`       | HTTP timeout in seconds (default `120`)                      |
 
 ### Outputs
 
-| Output | Type | Description |
-|--------|------|-------------|
-| `positive` | `CONDITIONING` | CLIP-encoded engineered or raw prompt |
-| `negative` | `CONDITIONING` | CLIP-encoded empty string — save-node compatible |
-| `prompt` | `STRING` | The final text used for encoding (useful for preview / metadata) |
+| Output     | Type           | Description                                                  |
+| ---------- | -------------- | ------------------------------------------------------------ |
+| `positive` | `CONDITIONING` | CLIP-encoded engineered or raw prompt                        |
+| `negative` | `CONDITIONING` | CLIP-encoded empty string — save-node compatible             |
+| `prompt`   | `STRING`       | The final text used for encoding (useful for preview / metadata) |
 
 ### Metadata capture
 
@@ -106,3 +107,7 @@ MIT — see [LICENSE](LICENSE).
 ### Credits
 
 Built by **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
+
+Based on [**ComfyUI-Z-Engineer**](https://github.com/BennyDaBall930/ComfyUI-Z-Engineer) by [BennyDaBall930](https://github.com/BennyDaBall930) (MIT licensed) — the original implementation that pioneered the LLM-driven prompt engineering pattern for Z-Image workflows. This Cyberdelia release adds built-in CLIP encoding (no separate text-encode node needed), dual CONDITIONING outputs for sampler compatibility, an engineered/passthrough mode toggle, a STRING preview output, runtime metadata cache push for slot-aware image savers, and a category move into the unified `Cyberdelia/Prompt` menu.
+
+
