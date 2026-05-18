@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-cyberdelia-z-engineer"
 description = "LLM-powered prompt engineering node for Z-Image Turbo workflows. By Cyberdelia AI Lab."
-version = "1.0.0"
+version = "1.0.1"
 license = { file = "LICENSE" }
 dependencies = ["requests"]
 

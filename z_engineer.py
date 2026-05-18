@@ -87,10 +87,17 @@ class CyberdeliaZEngineer:
         return clip.encode_from_tokens_scheduled(tokens)
 
     def _record_resolved_text(self, text):
-        """Push the actually-encoded text to any metadata extension that's
-        listening, so save nodes can capture the engineered LLM output
-        instead of the raw widget value. Uses loose coupling via sys.modules
-        scan — no hard dependency on any specific metadata extension.
+        """Push the actually-encoded positive text to any metadata extension
+        that's listening, keyed by node_id + output slot 0 (positive).
+
+        We DO NOT push for the negative output (slot 1) — it's an encoded
+        empty string, and the slot-aware walker treats the absence of a
+        registered slot as a definitive "no text here" (so metadata reports
+        empty negative correctly, instead of falling back to the input
+        widget which still contains the raw user text).
+
+        Loose-coupled via sys.modules scan — no hard dependency on any
+        specific metadata extension.
         """
         if not text:
             return
@@ -100,16 +107,15 @@ class CyberdeliaZEngineer:
             context = get_executing_context()
             if context is None:
                 return
-            node_id = context.node_id
-            list_index = getattr(context, "list_index", None)
+            node_id = str(context.node_id)
+            slot_key = f"{node_id}:0"  # slot 0 = positive output
             for mod in list(sys.modules.values()):
                 if mod is None:
                     continue
-                record_fn = getattr(mod, "record_resolved_text", None)
                 cache = getattr(mod, "current_resolved_texts", None)
-                if callable(record_fn) and cache is not None:
+                if isinstance(cache, dict):
                     try:
-                        record_fn(node_id, text, list_index)
+                        cache[slot_key] = text
                     except Exception:
                         pass
         except Exception:
