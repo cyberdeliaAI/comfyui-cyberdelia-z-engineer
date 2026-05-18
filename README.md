@@ -5,6 +5,7 @@ LLM-powered prompt engineering node for **Z-Image Turbo** workflows in ComfyUI.
 By **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
 ---
+![Sample Screenshot](assets/sample.png)
 
 ## What it does
 
