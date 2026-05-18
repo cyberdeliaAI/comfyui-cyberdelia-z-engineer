@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-cyberdelia-z-engineer"
+description = "LLM-powered prompt engineering node for Z-Image Turbo workflows. By Cyberdelia AI Lab."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = ["requests"]
+
+[project.urls]
+Repository = "https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer"
+
+[tool.comfy]
+PublisherId = "cyberdelia"
+DisplayName = "comfyui-cyberdelia-z-engineer"
+Icon = ""
