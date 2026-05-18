@@ -11,4 +11,4 @@ Repository = "https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer"
 [tool.comfy]
 PublisherId = "cyberdelia"
 DisplayName = "comfyui-cyberdelia-z-engineer"
-Icon = ""
+Icon = "https://raw.githubusercontent.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer/main/assets/icon.png"
