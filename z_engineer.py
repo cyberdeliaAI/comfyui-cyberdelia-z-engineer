@@ -98,6 +98,12 @@ class CyberdeliaZEngineer:
 
         Loose-coupled via sys.modules scan — no hard dependency on any
         specific metadata extension.
+
+        Implementation note: we use mod.__dict__.get() rather than
+        getattr() to avoid triggering lazy __getattr__ descriptors in
+        third-party libraries (e.g. transformers' deprecation system,
+        which emits a warning for every submodule on getattr() with an
+        unknown name).
         """
         if not text:
             return
@@ -112,7 +118,10 @@ class CyberdeliaZEngineer:
             for mod in list(sys.modules.values()):
                 if mod is None:
                     continue
-                cache = getattr(mod, "current_resolved_texts", None)
+                mod_dict = getattr(mod, "__dict__", None)
+                if mod_dict is None:
+                    continue
+                cache = mod_dict.get("current_resolved_texts")
                 if isinstance(cache, dict):
                     try:
                         cache[slot_key] = text
@@ -171,9 +180,26 @@ class CyberdeliaZEngineer:
                 )
                 preview = final_text[:100].replace("\n", " ")
                 print(f"[Z-Engineer] Engineered ({len(final_text)} chars): {preview}...")
+            except requests.exceptions.ConnectionError:
+                print(f"[Z-Engineer] ⚠️  Could not reach LLM at {api_url}")
+                print(f"[Z-Engineer]    Server not running, wrong URL, or blocked by firewall.")
+                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
+                final_text = text
+            except requests.exceptions.Timeout:
+                print(f"[Z-Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
+                print(f"[Z-Engineer]    Model may be loading or system is overloaded.")
+                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
+                final_text = text
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else "?"
+                print(f"[Z-Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
+                print(f"[Z-Engineer]    Check that model '{model}' is loaded in LM Studio.")
+                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
+                final_text = text
             except Exception as e:
-                # Fallback: workflow keeps rendering with the raw input
-                print(f"[Z-Engineer] LLM call failed: {e} — falling back to input text")
+                # Catch-all: workflow keeps rendering with the raw input
+                print(f"[Z-Engineer] ⚠️  LLM call failed: {e}")
+                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
                 final_text = text
 
         # Step 2: push final_text to any listening metadata extension
