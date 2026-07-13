@@ -1,9 +1,21 @@
+import time
+
 import requests
+
+from .model_utils import chat_completions_endpoint, resolve_model_name
+from .prompt_utils import (
+    build_preservation_instruction,
+    enforce_constraints,
+    enforce_keep_terms,
+    extract_constraints,
+    parse_keep_terms,
+    sanitize_output,
+)
 
 
 class CyberdeliaZEngineer:
     """
-    LLM-powered prompt engineering node for Z-Image Turbo workflows.
+    Model-independent LLM prompt engineering node for ComfyUI workflows.
     Sends an input prompt to an OpenAI-compatible LLM endpoint, receives an
     engineered prompt back, and CLIP-encodes it directly to a positive
     conditioning output. Also returns an empty negative conditioning for
@@ -44,7 +56,7 @@ class CyberdeliaZEngineer:
                 }),
                 "model": ("STRING", {
                     "multiline": False,
-                    "default": "local-model",
+                    "default": "auto",
                 }),
                 "seed": ("INT", {
                     "default": 0,
@@ -68,6 +80,32 @@ class CyberdeliaZEngineer:
                     "min": 10,
                     "max": 600,
                     "step": 1
+                }),
+            },
+            "optional": {
+                "keep_terms": ("STRING", {
+                    "multiline": False,
+                    "default": "",
+                    "placeholder": "Exact terms, separated by commas...",
+                }),
+                "preserve_constraints": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "preserve seed constraints",
+                    "label_off": "model decides",
+                }),
+                "clean_output": ("BOOLEAN", {
+                    "default": True,
+                    "label_on": "clean LLM output",
+                    "label_off": "raw LLM output",
+                }),
+                "error_mode": (["fallback_input", "stop", "empty"], {
+                    "default": "fallback_input",
+                }),
+                "retries": ("INT", {
+                    "default": 1,
+                    "min": 0,
+                    "max": 3,
+                    "step": 1,
                 }),
             },
         }
@@ -130,10 +168,58 @@ class CyberdeliaZEngineer:
         except Exception:
             pass  # Either ComfyUI is too old, or no metadata extension is loaded
 
+    @staticmethod
+    def _is_retryable_error(exc):
+        if isinstance(exc, (requests.exceptions.ConnectionError,
+                            requests.exceptions.Timeout)):
+            return True
+        if isinstance(exc, requests.exceptions.HTTPError):
+            response = exc.response
+            status = response.status_code if response is not None else None
+            return status == 429 or (status is not None and status >= 500)
+        return False
+
+    @staticmethod
+    def _retry_delay(exc, attempt):
+        if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+            retry_after = exc.response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    return min(max(float(retry_after), 0.0), 10.0)
+                except ValueError:
+                    pass
+        return min(2 ** attempt, 4)
+
+    @staticmethod
+    def _extract_message_content(data):
+        try:
+            message = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError("LLM response did not contain a chat message") from exc
+
+        content = message.get("content", "")
+        if isinstance(content, list):
+            content = "".join(
+                str(item.get("text", ""))
+                for item in content
+                if isinstance(item, dict) and item.get("type") in {None, "text"}
+            )
+        content = str(content or "").strip()
+        if content:
+            return content
+
+        reasoning = message.get("reasoning_content") or message.get("reasoning")
+        if reasoning:
+            raise RuntimeError(
+                "LLM returned reasoning but no final content; increase max_tokens "
+                "or adjust the model's reasoning settings"
+            )
+        raise RuntimeError("LLM returned an empty response")
+
     def _call_llm(self, text, system_prompt, api_url, model,
-                  seed, temperature, max_tokens, timeout):
+                  seed, temperature, max_tokens, timeout, retries=1):
         """Send a chat completion request to the OpenAI-compatible endpoint."""
-        endpoint = f"{api_url.rstrip('/')}/chat/completions"
+        endpoint = chat_completions_endpoint(api_url)
         headers = {"Content-Type": "application/json"}
         payload = {
             "model": model,
@@ -147,18 +233,55 @@ class CyberdeliaZEngineer:
             "stream": False,
         }
 
-        print(f"[Z-Engineer] POST {endpoint} (model: {model})")
-        response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-        return data['choices'][0]['message']['content'].strip()
+        attempts = max(1, int(retries) + 1)
+        for attempt in range(attempts):
+            try:
+                print(
+                    f"[Z-Engineer] POST {endpoint} (model: {model}, "
+                    f"attempt: {attempt + 1}/{attempts})"
+                )
+                response = requests.post(
+                    endpoint,
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                return self._extract_message_content(response.json())
+            except Exception as exc:
+                if attempt + 1 >= attempts or not self._is_retryable_error(exc):
+                    raise
+                delay = self._retry_delay(exc, attempt)
+                print(
+                    f"[Z-Engineer] Temporary LLM error: {exc}. "
+                    f"Retrying in {delay:g}s."
+                )
+                time.sleep(delay)
+
+        raise RuntimeError("LLM request failed without an error")
+
+    @staticmethod
+    def _log_failure(exc, api_url, model, timeout):
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            print(f"[Z-Engineer] ⚠️  Could not reach LLM at {api_url}")
+            print("[Z-Engineer]    Server not running, wrong URL, or blocked by firewall.")
+        elif isinstance(exc, requests.exceptions.Timeout):
+            print(f"[Z-Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
+        elif isinstance(exc, requests.exceptions.HTTPError):
+            status = exc.response.status_code if exc.response is not None else "?"
+            print(f"[Z-Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
+            print(f"[Z-Engineer]    Check model '{model}' and the server request settings.")
+        else:
+            print(f"[Z-Engineer] ⚠️  LLM call failed: {exc}")
 
     # ------------------------------------------------------------------
     # Main
     # ------------------------------------------------------------------
 
     def generate_prompt(self, clip, mode, text, system_prompt,
-                        api_url, model, seed, temperature, max_tokens, timeout):
+                        api_url, model, seed, temperature, max_tokens, timeout,
+                        keep_terms="", preserve_constraints=False,
+                        clean_output=True, error_mode="fallback_input", retries=1):
 
         # Step 1: decide what text we ultimately want to encode
         if not mode:
@@ -173,34 +296,51 @@ class CyberdeliaZEngineer:
 
         else:
             # Engineered mode — call the LLM
+            resolved_model = str(model or "").strip() or "auto"
             try:
-                final_text = self._call_llm(
-                    text, system_prompt, api_url, model,
-                    seed, temperature, max_tokens, timeout,
+                resolved_model = resolve_model_name(model, api_url, timeout=timeout)
+                parsed_keep_terms = parse_keep_terms(keep_terms)
+                constraints = extract_constraints(text) if preserve_constraints else []
+                preservation_instruction = build_preservation_instruction(
+                    parsed_keep_terms,
+                    constraints,
                 )
+                resolved_system_prompt = str(system_prompt or "").strip()
+                if preservation_instruction:
+                    resolved_system_prompt = (
+                        f"{resolved_system_prompt}\n\n{preservation_instruction}"
+                        if resolved_system_prompt
+                        else preservation_instruction
+                    )
+
+                raw_text = self._call_llm(
+                    text, resolved_system_prompt, api_url, resolved_model,
+                    seed, temperature, max_tokens, timeout, retries,
+                )
+                final_text = sanitize_output(raw_text) if clean_output else raw_text.strip()
+                if not final_text:
+                    raise RuntimeError("LLM output was empty after cleaning")
+                if preserve_constraints:
+                    final_text = enforce_constraints(final_text, constraints)
+                if parsed_keep_terms:
+                    final_text = enforce_keep_terms(final_text, parsed_keep_terms)
+
                 preview = final_text[:100].replace("\n", " ")
-                print(f"[Z-Engineer] Engineered ({len(final_text)} chars): {preview}...")
-            except requests.exceptions.ConnectionError:
-                print(f"[Z-Engineer] ⚠️  Could not reach LLM at {api_url}")
-                print(f"[Z-Engineer]    Server not running, wrong URL, or blocked by firewall.")
-                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
-                final_text = text
-            except requests.exceptions.Timeout:
-                print(f"[Z-Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
-                print(f"[Z-Engineer]    Model may be loading or system is overloaded.")
-                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
-                final_text = text
-            except requests.exceptions.HTTPError as e:
-                status = e.response.status_code if e.response is not None else "?"
-                print(f"[Z-Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
-                print(f"[Z-Engineer]    Check that model '{model}' is loaded in LM Studio.")
-                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
-                final_text = text
-            except Exception as e:
-                # Catch-all: workflow keeps rendering with the raw input
-                print(f"[Z-Engineer] ⚠️  LLM call failed: {e}")
-                print(f"[Z-Engineer]    Falling back to input text (passthrough).")
-                final_text = text
+                print(
+                    f"[Z-Engineer] Engineered with '{resolved_model}' "
+                    f"({len(final_text)} chars): {preview}..."
+                )
+            except Exception as exc:
+                self._log_failure(exc, api_url, resolved_model, timeout)
+                normalized_error_mode = str(error_mode or "fallback_input").casefold()
+                if normalized_error_mode == "stop":
+                    raise
+                if normalized_error_mode == "empty":
+                    print("[Z-Engineer]    Returning empty conditioning.")
+                    final_text = ""
+                else:
+                    print("[Z-Engineer]    Falling back to input text (passthrough).")
+                    final_text = text
 
         # Step 2: push final_text to any listening metadata extension
         # so the engineered output ends up in saved image metadata

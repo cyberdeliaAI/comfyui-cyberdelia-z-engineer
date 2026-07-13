@@ -1,113 +1,184 @@
 # comfyui-cyberdelia-z-engineer
 
-LLM-powered prompt engineering node for **Z-Image Turbo** workflows in ComfyUI.
+Model-independent, LLM-powered prompt engineering for ComfyUI. The node calls an OpenAI-compatible API, cleans and preserves the generated prompt, and CLIP-encodes it directly into sampler-ready conditioning.
 
 By **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
 ---
 
-![Cyberdelia Z-Engineer node in ComfyUI: raw concept input on the left, engineered 200-250 word image prompt output on the right](assets/sample.png)
+![Cyberdelia Z-Engineer node in ComfyUI: raw concept input on the left, engineered image prompt output on the right](assets/sample.png)
 
 ## What it does
 
-Sends your input prompt to a local LLM via an OpenAI-compatible API (LM Studio, Ollama, etc.), receives an enhanced prompt back, and CLIP-encodes the result directly into a positive conditioning output ready for your sampler. Also outputs an empty negative conditioning for save-node compatibility.
+**Cyberdelia Z-Engineer** sends a seed prompt to LM Studio, Ollama, or another OpenAI-compatible server. It returns:
 
-The text widget is named `text` so that metadata extension and image saver nodes following the standard CLIPTextEncode capture pattern will automatically pick up the prompt for embedding in PNG metadata.
+- positive conditioning encoded from the enhanced prompt;
+- empty negative conditioning for save-node compatibility;
+- the final enhanced prompt as a string.
 
-### Features
+Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
-- **CLIP encoding built-in** — connects directly to your sampler, no separate CLIPTextEncode node needed
-- **Dual conditioning outputs** — positive (engineered or passthrough) + empty negative
-- **STRING output** for preview, metadata, or debugging
-- **Mode toggle** — switch between `engineered (LLM)` and `passthrough (raw)` without rewiring
-- **Graceful fallback** — if the LLM is unreachable, falls back to the raw input prompt so your workflow keeps rendering
-- **Metadata extension friendly** — standard `text` widget name plays nicely with image savers
+## Features
 
-### Requirements
+- **CLIP encoding built in** — no separate CLIP Text Encode node required
+- **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
+- **Safe `auto` model selection** — only chooses when one model is unambiguous
+- **System-prompt presets** — one bundled Cyberdelia preset plus user-authored `.txt` presets
+- **Visible preset content** — selecting a preset fills the normal, editable `system_prompt` field
+- **Keep terms** — preserve LoRA triggers, names, or phrases verbatim
+- **Optional constraint preservation** — conservatively retains quoted text, counts, colors, codes, and lens/aperture details
+- **Output cleaning** — strips reasoning blocks, ChatML, Markdown fences, prompt labels, negative-prompt sections, and excess whitespace
+- **Configurable error handling** — fall back to input, stop the workflow, or return empty conditioning
+- **Targeted retries** — retries transient connection, timeout, HTTP 429, and HTTP 5xx failures
+- **Metadata-friendly runtime output** — publishes the actually encoded text to compatible metadata extensions
 
-- A recent version of ComfyUI (one that exposes `clip.encode_from_tokens_scheduled`)
-- A running OpenAI-compatible LLM endpoint, for example:
-  - [LM Studio](https://lmstudio.ai/) — default URL `http://localhost:1234/v1`
-  - Ollama with OpenAI compatibility enabled
-  - Any other OpenAI-compatible server
-- **Recommended model**: Qwen3-4B (or any 4B+ instruction-following model)
+## Requirements
 
-### Installation
+- A recent ComfyUI version with `clip.encode_from_tokens_scheduled`
+- A running OpenAI-compatible chat-completions endpoint
+- `requests`
 
-**Via ComfyUI-Manager**: search for *Cyberdelia* and install.
+LM Studio is recommended because it also exposes loaded-model information through its native model API. Other OpenAI-compatible servers remain supported through the manual `model` field and `/v1/models` fallback.
 
-**Manual install**:
+## Installation
+
+Via ComfyUI Manager, search for **Cyberdelia** and install the node.
+
+Manual installation:
 
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer.git
+pip install -r comfyui-cyberdelia-z-engineer/requirements.txt
 ```
 
-Then restart ComfyUI.
+Restart ComfyUI after installation or updating.
 
-### Usage
+## Basic usage
 
-1. Add the **Cyberdelia Z-Engineer** node — it lives under `Cyberdelia/Prompt` in the node menu.
-2. Connect `CLIP` (from your model / LoRA loader) to the node's `clip` input.
-3. Connect the `positive` output to your KSampler's positive conditioning input.
-4. Connect the `negative` output to the KSampler's negative input (it's empty but valid).
-5. Type your concept in the `text` field.
-6. Paste a Z-Image-tuned system prompt in `system_prompt` (see below).
-7. Set `api_url` to your LLM server URL.
-8. Set `model` to the exact model identifier as loaded in your server.
-9. Toggle `mode` between **engineered** and **passthrough** as needed.
+1. Add **Cyberdelia Z-Engineer** from `Cyberdelia/Prompt`.
+2. Connect the `CLIP` output from your model or LoRA loader.
+3. Connect `positive` and `negative` to the sampler.
+4. Enter a seed prompt in `text`.
+5. Choose a system-prompt preset or keep `Custom` and edit `system_prompt` directly.
+6. Set the OpenAI-compatible `api_url`.
+7. Choose a discovered model, enter a manual model ID, or use `auto`.
+8. Queue the workflow.
 
-### Recommended system prompt for Z-Image Turbo
+## Model selection
 
+The frontend model selector is a convenience control that updates the existing `model` field, so the selected model remains stored in the workflow.
+
+`auto` follows conservative rules:
+
+1. If exactly one LLM is loaded, use it.
+2. If nothing is loaded and exactly one LLM is available, use it.
+3. If multiple choices are possible, report an ambiguity instead of choosing arbitrarily.
+
+Loaded models are shown first and marked `[loaded]`. Embedding models are excluded. Use **↻ Refresh models** after changing models in LM Studio. If discovery is unavailable, type a model ID in the existing `model` field.
+
+The node does not call LM Studio's model-management endpoints and never unloads or evicts models. A normal chat request can still trigger LM Studio's own JIT loading if that option is enabled in LM Studio.
+
+## Presets
+
+The bundled preset is **Cyberdelia Detailed 200–250**. `Custom` remains the default and uses the visible `system_prompt` value unchanged.
+
+The requested 200–250-word range is an instruction to the selected model; the node does not mechanically rewrite or pad the result to enforce that length.
+
+To add a personal preset, create a UTF-8 `.txt` file in:
+
+```text
+ComfyUI/user/z_engineer/presets/
 ```
-Interpret the user seed as production intent, then build a definitive 200-250 word single-paragraph image prompt that preserves every explicit constraint while intelligently expanding missing details. First infer the core subject, action, setting, and emotional tone; treat these as non-negotiable anchors. Then enhance with precise visual staging (explicit foreground, midground, background), clear visual hierarchy and eye path, physically plausible lighting (source, direction, softness, color temperature), and optical strategy (if lens/aperture are provided, preserve exactly; if absent, choose fitting lens and aperture and imply their depth-of-field effect). Integrate organic, manufactured, and environmental textures with realistic material behavior, add motion/atmospheric cues only when they support the scene, and apply a coherent color grade consistent with mood and environment. Keep the prose vivid but controlled: no contradictions, no overstuffing, no generic filler. Do not mention camera body brands. Output one polished paragraph only, no bullets, no line breaks, no meta commentary.
+
+If ComfyUI was started with a custom user directory, the `z_engineer/presets` folder is created under that directory instead. The filename becomes the dropdown label and the complete file content becomes the system prompt.
+
+Choose **↻ Refresh presets** after adding or editing a file. Selecting a preset copies its full text into `system_prompt`; editing that field switches the selector back to `Custom`. Because the actual text is stored in the workflow, old workflows stay reproducible if a preset file later changes.
+
+Presets intentionally contain no model or sampling settings.
+
+## Preservation and cleaning
+
+`keep_terms` accepts terms separated by commas, semicolons, or line breaks:
+
+```text
+m4rty style, OHWX woman, neon_glow
 ```
 
-> Note: in the system prompt above, "user seed" refers to the user's input idea (the raw concept), not the numerical seed parameter of the node.
+The node asks the LLM to retain them and deterministically appends any missing terms with their original casing.
 
-### Parameters
+`preserve_constraints` is off by default. When enabled, it applies the same two-stage instruction and post-check to conservative constraints extracted from the seed:
 
-| Parameter       | Description                                                  |
-| --------------- | ------------------------------------------------------------ |
-| `clip`          | CLIP model from your model / LoRA loader                     |
-| `mode`          | `engineered (LLM)` → calls the LLM; `passthrough (raw)` → uses input text unchanged |
-| `text`          | Your concept / seed prompt (this is also what metadata savers will capture) |
-| `system_prompt` | Instructions for the LLM (see recommended prompt above)      |
-| `api_url`       | OpenAI-compatible base URL, e.g. `http://localhost:1234/v1`  |
-| `model`         | Model identifier as loaded in your LLM server                |
-| `seed`          | LLM sampling seed — combine with `control_after_generate` for variation per run |
-| `temperature`   | Sampling temperature (`0.0` = deterministic)                 |
-| `max_tokens`    | Output token cap (default `600`)                             |
-| `timeout`       | HTTP timeout in seconds (default `120`)                      |
+- quoted text;
+- counts up to twenty or numeric counts;
+- color/object phrases;
+- code-like identifiers such as `RX-78`;
+- lens/aperture strings such as `24-70mm f/2.8`.
 
-### Outputs
+It does not add model-specific instructions, force a target word count, or pad short prompts.
 
-| Output     | Type           | Description                                                  |
-| ---------- | -------------- | ------------------------------------------------------------ |
-| `positive` | `CONDITIONING` | CLIP-encoded engineered or raw prompt                        |
-| `negative` | `CONDITIONING` | CLIP-encoded empty string — save-node compatible             |
-| `prompt`   | `STRING`       | The final text used for encoding (useful for preview / metadata) |
+`clean_output` is on by default. It removes technical model artefacts but does not remove camera brands or rewrite the prompt style.
 
-### Metadata capture
+## Error handling and retries
 
-The `text` widget name matches the convention used by `CLIPTextEncode`, so common image saver / metadata extension nodes will automatically capture your input prompt and embed it in the saved PNG. Note that what gets saved is the **raw user input**, not the engineered LLM output — the latter is a runtime value and isn't part of the workflow JSON.
+`error_mode` controls what happens after the request ultimately fails:
 
-If you specifically want the engineered text in the metadata, route the `prompt` STRING output directly into your saver's prompt-text input.
+| Mode | Result |
+| --- | --- |
+| `fallback_input` | Continue with the original seed prompt (default) |
+| `stop` | Raise the original error and stop the workflow |
+| `empty` | Return empty positive and negative conditioning |
 
-### Tips
+`retries` defaults to `1`, meaning one initial attempt plus one retry. Retries are limited to connection errors, timeouts, HTTP 429, and HTTP 5xx responses, with a short backoff. Permanent request errors are not retried.
 
-- **Reproducibility**: set `mode` to engineered, fix the seed (`control_after_generate: fixed`), and use a low temperature. Note that local LLMs are not 100% deterministic — KV cache state and quantization can introduce small variations.
-- **Variation**: set `control_after_generate: randomize` to get a different engineered prompt each run for the same input.
-- **Debugging**: hook the `prompt` STRING output into a ShowText node (e.g. from pysssss / WAS Node Suite) to see the engineered output before encoding.
+Fallback and passthrough text are never cleaned or modified.
 
-### License
+## Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `clip` | CLIP model used to encode the final prompt |
+| `mode` | Enhanced LLM mode or raw passthrough |
+| `text` | Input concept or seed prompt |
+| `system_prompt` | Visible instructions sent to the LLM |
+| `api_url` | OpenAI-compatible base URL, normally `http://localhost:1234/v1` |
+| `model` | Manual model ID or `auto` |
+| `seed` | Sampling seed sent to the API |
+| `temperature` | Sampling temperature sent to the API |
+| `max_tokens` | Maximum output tokens sent to the API |
+| `timeout` | Request timeout in seconds |
+| `keep_terms` | Exact terms that must survive generation |
+| `preserve_constraints` | Enable conservative seed-constraint preservation |
+| `clean_output` | Remove technical LLM output artefacts |
+| `error_mode` | `fallback_input`, `stop`, or `empty` |
+| `retries` | Number of transient-error retries, from 0 to 3 |
+
+`top_p`, `top_k`, and `min_p` are deliberately not sent; configure them in LM Studio or your chosen server.
+
+## Outputs
+
+| Output | Type | Description |
+| --- | --- | --- |
+| `positive` | `CONDITIONING` | CLIP-encoded final prompt |
+| `negative` | `CONDITIONING` | CLIP-encoded empty string |
+| `prompt` | `STRING` | Exact text used for positive conditioning |
+
+For guaranteed metadata capture, connect `prompt` directly to the prompt-text input of your image saver. Compatible metadata extensions may also receive the resolved runtime text through the node's metadata cache integration.
+
+## Testing
+
+Run the standalone unit tests from the custom-node directory:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+## License
 
 MIT — see [LICENSE](LICENSE).
 
-### Credits
+## Credits
 
 Built by **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
-Based on [**ComfyUI-Z-Engineer**](https://github.com/BennyDaBall930/ComfyUI-Z-Engineer) by [BennyDaBall930](https://github.com/BennyDaBall930) (MIT licensed) — the original implementation that pioneered the LLM-driven prompt engineering pattern for Z-Image workflows. This Cyberdelia release adds built-in CLIP encoding (no separate text-encode node needed), dual CONDITIONING outputs for sampler compatibility, an engineered/passthrough mode toggle, a STRING preview output, runtime metadata cache push for slot-aware image savers, and a category move into the unified `Cyberdelia/Prompt` menu.
-
-
+Based on [**ComfyUI-Z-Engineer**](https://github.com/BennyDaBall930/ComfyUI-Z-Engineer) by [BennyDaBall930](https://github.com/BennyDaBall930) (MIT licensed).
