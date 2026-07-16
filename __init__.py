@@ -5,6 +5,7 @@ By Cyberdelia AI Lab — https://github.com/cyberdeliaAI
 """
 
 from .z_engineer import CyberdeliaZEngineer
+from .z_engineer_input import CyberdeliaZEngineerInput
 
 WEB_DIRECTORY = "./web"
 
@@ -22,10 +23,12 @@ except (ImportError, AttributeError, RuntimeError) as exc:
 
 NODE_CLASS_MAPPINGS = {
     "CyberdeliaZEngineer": CyberdeliaZEngineer,
+    "CyberdeliaZEngineerInput": CyberdeliaZEngineerInput,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaZEngineer": "Cyberdelia Z-Engineer",
+    "CyberdeliaZEngineerInput": "Cyberdelia Z-Engineer Input",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

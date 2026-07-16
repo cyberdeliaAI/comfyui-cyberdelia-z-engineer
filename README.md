@@ -21,6 +21,7 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 ## Features
 
 - **CLIP encoding built in** — no separate CLIP Text Encode node required
+- **Companion input node** — control the LLM/passthrough mode and prompt from one connectable node
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
 - **System-prompt presets** — one bundled Cyberdelia preset plus user-authored `.txt` presets
@@ -64,6 +65,17 @@ Restart ComfyUI after installation or updating.
 6. Set the OpenAI-compatible `api_url`.
 7. Choose a discovered model, enter a manual model ID, or use `auto`.
 8. Queue the workflow.
+
+## Z-Engineer Input node
+
+**Cyberdelia Z-Engineer Input** provides two reusable outputs:
+
+| Output | Type | Connect to Z-Engineer |
+| --- | --- | --- |
+| `mode` | `BOOLEAN` | `mode` |
+| `prompt` | `STRING` | `text` |
+
+Set the toggle to **engineered (LLM)** or **passthrough (raw)** and enter the prompt in the multiline field. In the Z-Engineer node, convert the `mode` and `text` widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect both outputs. The original widgets and existing workflows remain unchanged when the companion node is not used.
 
 ## Model selection
 
