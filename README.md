@@ -100,14 +100,22 @@ The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Imag
 
 1. Add **Load Image** and select an image.
 2. Connect its `IMAGE` output to Z-Engineer's `image` input.
-3. Select a model marked `[vision]`, or use `auto`.
-4. Enable **engineered (LLM)** and queue the workflow.
+3. Enable `use_vision`.
+4. Enter the image-specific instructions in `vision_system_prompt`.
+5. Select a model marked `[vision]`, or use `auto`.
+6. Enable **engineered (LLM)** and queue the workflow.
 
-The `text` field is optional when an image is connected. Leave it empty for a general, detailed image-to-prompt description, or use it to guide the analysis, for example `Focus on the clothing and lighting`.
+| Main `mode` | `use_vision` | Behavior |
+| --- | --- | --- |
+| passthrough | either | Return `text` unchanged; do not call the LLM |
+| engineered | off | Use `system_prompt` for normal text-to-prompt enhancement |
+| engineered | on | Require `image` and use `vision_system_prompt` for image-to-prompt |
+
+With `use_vision` enabled, Z-Engineer requires an image and uses `vision_system_prompt` instead of the normal `system_prompt`. The `text` field is optional: leave it empty for a direct image-to-prompt conversion, or use it to request changes, for example `Make it a night scene in Tokyo`.
 
 With `auto`, Z-Engineer considers only models that LM Studio explicitly reports as vision-capable. A manually entered model ID remains available for other OpenAI-compatible servers whose model list does not expose capability metadata.
 
-The first image in a batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block. The image is ignored in passthrough mode. Without an image, the existing text-only behavior is unchanged.
+With `use_vision` disabled, the normal `system_prompt` and text-to-prompt path are used, even if an image remains connected. The first image in a vision batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block. The image is also ignored in passthrough mode.
 
 ## Presets
 
@@ -182,6 +190,8 @@ Fallback and passthrough text are never cleaned or modified.
 | `clean_output` | Remove technical LLM output artefacts |
 | `error_mode` | `fallback_input`, `stop`, or `empty` |
 | `retries` | Number of transient-error retries, from 0 to 3 |
+| `use_vision` | Switch between normal text enhancement and image-to-prompt |
+| `vision_system_prompt` | Separate system instructions used only in vision mode |
 | `image` | Optional ComfyUI image sent to a vision model for image-to-prompt generation |
 
 `top_p`, `top_k`, and `min_p` are deliberately not sent; configure them in LM Studio or your chosen server.

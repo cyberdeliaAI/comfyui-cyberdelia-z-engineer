@@ -6,11 +6,8 @@ from io import BytesIO
 
 VISION_MAX_DIMENSION = 1536
 DEFAULT_VISION_INSTRUCTION = (
-    "Analyze the attached image and convert its visible content into a detailed "
-    "image-generation prompt. Treat the image as the primary reference. Preserve "
-    "the subject, composition, pose, clothing, environment, lighting, colors, "
-    "textures, camera perspective, depth of field, and mood. Return only the final "
-    "prompt."
+    "Convert the attached image into an image-generation prompt according to "
+    "the vision system instructions."
 )
 
 
@@ -60,7 +57,10 @@ def build_vision_user_content(text, image_data_url):
     user_direction = str(text or "").strip()
     instruction = DEFAULT_VISION_INSTRUCTION
     if user_direction:
-        instruction += f"\n\nAdditional direction from the user:\n{user_direction}"
+        instruction += (
+            "\n\nAdditional user instructions take priority where they request "
+            f"changes to the image:\n{user_direction}"
+        )
     return [
         {"type": "text", "text": instruction},
         {

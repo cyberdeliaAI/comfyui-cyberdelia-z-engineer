@@ -81,7 +81,10 @@ class NodeTests(unittest.TestCase):
                 "timeout",
             ],
         )
-        self.assertIn("image", CyberdeliaZEngineer.INPUT_TYPES()["optional"])
+        optional = CyberdeliaZEngineer.INPUT_TYPES()["optional"]
+        self.assertIn("use_vision", optional)
+        self.assertIn("vision_system_prompt", optional)
+        self.assertIn("image", optional)
 
     def test_retry_then_success(self):
         with (
@@ -199,7 +202,12 @@ class NodeTests(unittest.TestCase):
         ):
             args = dict(self.base_args)
             args.update(text="", model="auto")
-            result = self.node.generate_prompt(**args, image=object())
+            result = self.node.generate_prompt(
+                **args,
+                use_vision=True,
+                vision_system_prompt="Vision-only system prompt.",
+                image=object(),
+            )
 
         self.assertEqual(result[2], "A detailed image prompt.")
         resolve_model.assert_called_once_with(
@@ -209,8 +217,12 @@ class NodeTests(unittest.TestCase):
             require_vision=True,
         )
         content = post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertEqual(
+            post.call_args.kwargs["json"]["messages"][0]["content"],
+            "Vision-only system prompt.",
+        )
         self.assertEqual(content[0]["type"], "text")
-        self.assertIn("Analyze the attached image", content[0]["text"])
+        self.assertIn("Convert the attached image", content[0]["text"])
         self.assertEqual(
             content[1],
             {
@@ -233,11 +245,47 @@ class NodeTests(unittest.TestCase):
         ):
             self.node.generate_prompt(
                 **self.base_args,
+                use_vision=True,
                 image=object(),
             )
 
         content = post.call_args.kwargs["json"]["messages"][1]["content"]
-        self.assertIn("Additional direction from the user:\ntwo robots", content[0]["text"])
+        self.assertIn(
+            "Additional user instructions take priority",
+            content[0]["text"],
+        )
+        self.assertIn("two robots", content[0]["text"])
+
+    def test_connected_image_is_ignored_when_vision_is_off(self):
+        with (
+            patch.object(node_module, "image_to_data_url") as encode_image,
+            patch.object(
+                node_module.requests,
+                "post",
+                return_value=response_with("A normal text prompt."),
+            ) as post,
+        ):
+            result = self.node.generate_prompt(
+                **self.base_args,
+                use_vision=False,
+                vision_system_prompt="Unused vision prompt.",
+                image=object(),
+            )
+
+        self.assertEqual(result[2], "A normal text prompt.")
+        encode_image.assert_not_called()
+        messages = post.call_args.kwargs["json"]["messages"]
+        self.assertEqual(messages[0]["content"], "Return an image prompt.")
+        self.assertEqual(messages[1]["content"], "two robots")
+
+    def test_vision_without_image_uses_error_mode(self):
+        result = self.node.generate_prompt(
+            **self.base_args,
+            use_vision=True,
+            vision_system_prompt="Vision prompt.",
+            error_mode="fallback_input",
+        )
+        self.assertEqual(result[2], "two robots")
 
     def test_passthrough_ignores_connected_image(self):
         with (

@@ -108,6 +108,19 @@ class CyberdeliaZEngineer:
                     "max": 3,
                     "step": 1,
                 }),
+                "use_vision": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "vision image → prompt",
+                    "label_off": "normal text → prompt",
+                }),
+                "vision_system_prompt": ("STRING", {
+                    "multiline": True,
+                    "default": (
+                        "Analyze the attached image and return only one detailed "
+                        "image-generation prompt in English."
+                    ),
+                    "placeholder": "Instructions used only when Vision is enabled...",
+                }),
                 "image": ("IMAGE",),
             },
         }
@@ -290,10 +303,11 @@ class CyberdeliaZEngineer:
                         api_url, model, seed, temperature, max_tokens, timeout,
                         keep_terms="", preserve_constraints=False,
                         clean_output=True, error_mode="fallback_input", retries=1,
-                        image=None):
+                        use_vision=False, vision_system_prompt="", image=None):
 
         input_text = str(text or "")
-        has_image = image is not None
+        vision_requested = bool(use_vision)
+        has_image = vision_requested and image is not None
 
         # Step 1: decide what text we ultimately want to encode
         if not mode:
@@ -301,7 +315,7 @@ class CyberdeliaZEngineer:
             final_text = input_text
             print("[Z-Engineer] Passthrough mode — using input text unchanged")
 
-        elif not input_text.strip() and not has_image:
+        elif not input_text.strip() and not vision_requested:
             # Engineered mode but no input — skip LLM call
             final_text = ""
             print("[Z-Engineer] Empty input text — returning empty conditioning")
@@ -310,11 +324,15 @@ class CyberdeliaZEngineer:
             # Engineered mode — call the LLM
             resolved_model = str(model or "").strip() or "auto"
             try:
+                if vision_requested and image is None:
+                    raise ValueError(
+                        "Vision mode is enabled but no image is connected"
+                    )
                 resolved_model = resolve_model_name(
                     model,
                     api_url,
                     timeout=timeout,
-                    require_vision=has_image,
+                    require_vision=vision_requested,
                 )
                 parsed_keep_terms = parse_keep_terms(keep_terms)
                 constraints = (
@@ -324,7 +342,10 @@ class CyberdeliaZEngineer:
                     parsed_keep_terms,
                     constraints,
                 )
-                resolved_system_prompt = str(system_prompt or "").strip()
+                selected_system_prompt = (
+                    vision_system_prompt if vision_requested else system_prompt
+                )
+                resolved_system_prompt = str(selected_system_prompt or "").strip()
                 if preservation_instruction:
                     resolved_system_prompt = (
                         f"{resolved_system_prompt}\n\n{preservation_instruction}"
