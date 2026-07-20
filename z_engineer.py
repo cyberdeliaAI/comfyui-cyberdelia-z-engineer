@@ -11,6 +11,7 @@ from .prompt_utils import (
     parse_keep_terms,
     sanitize_output,
 )
+from .vision_utils import build_vision_user_content, image_to_data_url
 
 
 class CyberdeliaZEngineer:
@@ -107,6 +108,7 @@ class CyberdeliaZEngineer:
                     "max": 3,
                     "step": 1,
                 }),
+                "image": ("IMAGE",),
             },
         }
 
@@ -217,15 +219,21 @@ class CyberdeliaZEngineer:
         raise RuntimeError("LLM returned an empty response")
 
     def _call_llm(self, text, system_prompt, api_url, model,
-                  seed, temperature, max_tokens, timeout, retries=1):
+                  seed, temperature, max_tokens, timeout, retries=1,
+                  image_data_url=None):
         """Send a chat completion request to the OpenAI-compatible endpoint."""
         endpoint = chat_completions_endpoint(api_url)
         headers = {"Content-Type": "application/json"}
+        user_content = (
+            build_vision_user_content(text, image_data_url)
+            if image_data_url
+            else text
+        )
         payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "seed": seed,
@@ -281,15 +289,19 @@ class CyberdeliaZEngineer:
     def generate_prompt(self, clip, mode, text, system_prompt,
                         api_url, model, seed, temperature, max_tokens, timeout,
                         keep_terms="", preserve_constraints=False,
-                        clean_output=True, error_mode="fallback_input", retries=1):
+                        clean_output=True, error_mode="fallback_input", retries=1,
+                        image=None):
+
+        input_text = str(text or "")
+        has_image = image is not None
 
         # Step 1: decide what text we ultimately want to encode
         if not mode:
             # Passthrough — use raw user input
-            final_text = text
+            final_text = input_text
             print("[Z-Engineer] Passthrough mode — using input text unchanged")
 
-        elif not text.strip():
+        elif not input_text.strip() and not has_image:
             # Engineered mode but no input — skip LLM call
             final_text = ""
             print("[Z-Engineer] Empty input text — returning empty conditioning")
@@ -298,9 +310,16 @@ class CyberdeliaZEngineer:
             # Engineered mode — call the LLM
             resolved_model = str(model or "").strip() or "auto"
             try:
-                resolved_model = resolve_model_name(model, api_url, timeout=timeout)
+                resolved_model = resolve_model_name(
+                    model,
+                    api_url,
+                    timeout=timeout,
+                    require_vision=has_image,
+                )
                 parsed_keep_terms = parse_keep_terms(keep_terms)
-                constraints = extract_constraints(text) if preserve_constraints else []
+                constraints = (
+                    extract_constraints(input_text) if preserve_constraints else []
+                )
                 preservation_instruction = build_preservation_instruction(
                     parsed_keep_terms,
                     constraints,
@@ -313,9 +332,11 @@ class CyberdeliaZEngineer:
                         else preservation_instruction
                     )
 
+                image_data_url = image_to_data_url(image) if has_image else None
                 raw_text = self._call_llm(
-                    text, resolved_system_prompt, api_url, resolved_model,
+                    input_text, resolved_system_prompt, api_url, resolved_model,
                     seed, temperature, max_tokens, timeout, retries,
+                    image_data_url,
                 )
                 final_text = sanitize_output(raw_text) if clean_output else raw_text.strip()
                 if not final_text:
@@ -328,6 +349,7 @@ class CyberdeliaZEngineer:
                 preview = final_text[:100].replace("\n", " ")
                 print(
                     f"[Z-Engineer] Engineered with '{resolved_model}' "
+                    f"{'(vision) ' if has_image else ''}"
                     f"({len(final_text)} chars): {preview}..."
                 )
             except Exception as exc:
@@ -340,7 +362,7 @@ class CyberdeliaZEngineer:
                     final_text = ""
                 else:
                     print("[Z-Engineer]    Falling back to input text (passthrough).")
-                    final_text = text
+                    final_text = input_text
 
         # Step 2: push final_text to any listening metadata extension
         # so the engineered output ends up in saved image metadata

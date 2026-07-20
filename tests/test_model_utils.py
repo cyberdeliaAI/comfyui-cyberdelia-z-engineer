@@ -39,6 +39,7 @@ class ModelUtilsTests(unittest.TestCase):
                 {
                     "key": "model-a",
                     "type": "llm",
+                    "capabilities": {"vision": True},
                     "loaded_instances": [{"id": "model-a@loaded"}],
                 },
             ]
@@ -49,6 +50,8 @@ class ModelUtilsTests(unittest.TestCase):
 
         self.assertEqual([model["id"] for model in models], ["model-a", "model-b"])
         self.assertTrue(models[0]["loaded"])
+        self.assertTrue(models[0]["vision"])
+        self.assertFalse(models[1]["vision"])
         get.assert_called_once_with("http://localhost:1234/api/v1/models", timeout=2.0)
 
     @patch("model_utils.requests.get")
@@ -82,6 +85,36 @@ class ModelUtilsTests(unittest.TestCase):
         ]
         with self.assertRaisesRegex(model_utils.ModelDiscoveryError, "multiple LLMs"):
             model_utils.resolve_model_name("auto", "http://localhost:1234/v1")
+
+    @patch("model_utils.discover_models")
+    def test_auto_vision_ignores_loaded_text_only_model(self, discover):
+        discover.return_value = [
+            {"id": "text-only", "loaded": True, "vision": False},
+            {"id": "vision-model", "loaded": True, "vision": True},
+        ]
+        self.assertEqual(
+            model_utils.resolve_model_name(
+                "auto",
+                "http://localhost:1234/v1",
+                require_vision=True,
+            ),
+            "vision-model",
+        )
+
+    @patch("model_utils.discover_models")
+    def test_auto_vision_requires_known_vision_capability(self, discover):
+        discover.return_value = [
+            {"id": "unknown-model", "loaded": True, "vision": False},
+        ]
+        with self.assertRaisesRegex(
+            model_utils.ModelDiscoveryError,
+            "no vision-capable model",
+        ):
+            model_utils.resolve_model_name(
+                "auto",
+                "http://localhost:1234/v1",
+                require_vision=True,
+            )
 
 
 if __name__ == "__main__":

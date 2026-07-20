@@ -160,7 +160,11 @@ async function refreshModels(node, force = false) {
             throw new Error(payload.error || `HTTP ${response.status}`);
         }
         const entries = (payload.models ?? []).map((model) => {
-            const label = model.loaded ? `${model.id} [loaded]` : model.id;
+            const markers = [
+                model.loaded ? "[loaded]" : "",
+                model.vision ? "[vision]" : "",
+            ].filter(Boolean).join(" ");
+            const label = markers ? `${model.id} ${markers}` : model.id;
             return [label, model.id];
         });
         node.__zEngineerModels = new Map(entries);

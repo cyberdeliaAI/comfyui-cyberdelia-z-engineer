@@ -22,6 +22,7 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
 - **CLIP encoding built in** — no separate CLIP Text Encode node required
 - **Companion input node** — control the LLM/passthrough mode and prompt from one connectable node
+- **Image-to-prompt vision input** — connect ComfyUI's Load Image output to describe an image with a vision model
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
 - **System-prompt presets** — one bundled Cyberdelia preset plus user-authored `.txt` presets
@@ -40,6 +41,8 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 - `requests`
 
 LM Studio is recommended because it also exposes loaded-model information through its native model API. Other OpenAI-compatible servers remain supported through the manual `model` field and `/v1/models` fallback.
+
+Image-to-prompt additionally requires a vision-capable chat model. Pillow and PyTorch are already provided by ComfyUI.
 
 ## Installation
 
@@ -87,9 +90,24 @@ The frontend model selector is a convenience control that updates the existing `
 2. If nothing is loaded and exactly one LLM is available, use it.
 3. If multiple choices are possible, report an ambiguity instead of choosing arbitrarily.
 
-Loaded models are shown first and marked `[loaded]`. Embedding models are excluded. Use **↻ Refresh models** after changing models in LM Studio. If discovery is unavailable, type a model ID in the existing `model` field.
+Loaded models are shown first and marked `[loaded]`; models that report image-input support are marked `[vision]`. Embedding models are excluded. Use **↻ Refresh models** after changing models in LM Studio. If discovery is unavailable, type a model ID in the existing `model` field.
 
 The node does not call LM Studio's model-management endpoints and never unloads or evicts models. A normal chat request can still trigger LM Studio's own JIT loading if that option is enabled in LM Studio.
+
+## Image to prompt
+
+The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Image** node:
+
+1. Add **Load Image** and select an image.
+2. Connect its `IMAGE` output to Z-Engineer's `image` input.
+3. Select a model marked `[vision]`, or use `auto`.
+4. Enable **engineered (LLM)** and queue the workflow.
+
+The `text` field is optional when an image is connected. Leave it empty for a general, detailed image-to-prompt description, or use it to guide the analysis, for example `Focus on the clothing and lighting`.
+
+With `auto`, Z-Engineer considers only models that LM Studio explicitly reports as vision-capable. A manually entered model ID remains available for other OpenAI-compatible servers whose model list does not expose capability metadata.
+
+The first image in a batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block. The image is ignored in passthrough mode. Without an image, the existing text-only behavior is unchanged.
 
 ## Presets
 
@@ -164,6 +182,7 @@ Fallback and passthrough text are never cleaned or modified.
 | `clean_output` | Remove technical LLM output artefacts |
 | `error_mode` | `fallback_input`, `stop`, or `empty` |
 | `retries` | Number of transient-error retries, from 0 to 3 |
+| `image` | Optional ComfyUI image sent to a vision model for image-to-prompt generation |
 
 `top_p`, `top_k`, and `min_p` are deliberately not sent; configure them in LM Studio or your chosen server.
 

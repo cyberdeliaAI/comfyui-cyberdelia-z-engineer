@@ -81,6 +81,7 @@ class NodeTests(unittest.TestCase):
                 "timeout",
             ],
         )
+        self.assertIn("image", CyberdeliaZEngineer.INPUT_TYPES()["optional"])
 
     def test_retry_then_success(self):
         with (
@@ -177,6 +178,80 @@ class NodeTests(unittest.TestCase):
                 preserve_constraints=True,
             )
         self.assertEqual(result[2], "Robots in a studio, with two robots, m4rty style.")
+
+    def test_image_builds_vision_request_and_allows_empty_text(self):
+        with (
+            patch.object(
+                node_module,
+                "resolve_model_name",
+                return_value="vision-model",
+            ) as resolve_model,
+            patch.object(
+                node_module,
+                "image_to_data_url",
+                return_value="data:image/jpeg;base64,example",
+            ),
+            patch.object(
+                node_module.requests,
+                "post",
+                return_value=response_with("A detailed image prompt."),
+            ) as post,
+        ):
+            args = dict(self.base_args)
+            args.update(text="", model="auto")
+            result = self.node.generate_prompt(**args, image=object())
+
+        self.assertEqual(result[2], "A detailed image prompt.")
+        resolve_model.assert_called_once_with(
+            "auto",
+            "http://localhost:1234/v1",
+            timeout=120,
+            require_vision=True,
+        )
+        content = post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertEqual(content[0]["type"], "text")
+        self.assertIn("Analyze the attached image", content[0]["text"])
+        self.assertEqual(
+            content[1],
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/jpeg;base64,example",
+                    "detail": "auto",
+                },
+            },
+        )
+
+    def test_image_request_includes_user_direction(self):
+        with (
+            patch.object(node_module, "image_to_data_url", return_value="data:image/png;base64,x"),
+            patch.object(
+                node_module.requests,
+                "post",
+                return_value=response_with("A focused image prompt."),
+            ) as post,
+        ):
+            self.node.generate_prompt(
+                **self.base_args,
+                image=object(),
+            )
+
+        content = post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("Additional direction from the user:\ntwo robots", content[0]["text"])
+
+    def test_passthrough_ignores_connected_image(self):
+        with (
+            patch.object(node_module, "image_to_data_url") as encode_image,
+            patch.object(node_module.requests, "post") as post,
+        ):
+            result = self.node.generate_prompt(
+                **{**self.base_args, "mode": False},
+                image=object(),
+            )
+
+        self.assertEqual(result[2], "two robots")
+        encode_image.assert_not_called()
+        post.assert_not_called()
 
 
 if __name__ == "__main__":

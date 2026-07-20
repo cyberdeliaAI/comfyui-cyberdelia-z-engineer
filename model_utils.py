@@ -63,6 +63,15 @@ def _native_models(api_url, timeout):
         model_id = str(item.get("key", "")).strip()
         if not model_id:
             continue
+        capabilities = item.get("capabilities") or {}
+        vision_capability = (
+            capabilities.get("vision") if isinstance(capabilities, dict) else False
+        )
+        supports_vision = (
+            vision_capability is True
+            or str(vision_capability).casefold() == "true"
+            or model_type in {"vision", "vlm"}
+        )
         instances = [
             str(instance.get("id", "")).strip()
             for instance in (item.get("loaded_instances") or [])
@@ -74,6 +83,7 @@ def _native_models(api_url, timeout):
                 "loaded": bool(instances),
                 "instances": instances,
                 "source": "lmstudio",
+                "vision": supports_vision,
             }
         )
     return models
@@ -91,12 +101,27 @@ def _openai_models(api_url, timeout):
             continue
         model_id = str(item.get("id", "")).strip()
         if model_id:
+            capabilities = item.get("capabilities") or {}
+            if isinstance(capabilities, dict):
+                vision_capability = capabilities.get("vision")
+                supports_vision = (
+                    vision_capability is True
+                    or str(vision_capability).casefold() == "true"
+                )
+            elif isinstance(capabilities, (list, tuple, set)):
+                supports_vision = any(
+                    str(capability).casefold() in {"vision", "image", "image_input"}
+                    for capability in capabilities
+                )
+            else:
+                supports_vision = False
             models.append(
                 {
                     "id": model_id,
                     "loaded": False,
                     "instances": [],
                     "source": "openai",
+                    "vision": supports_vision,
                 }
             )
     return models
@@ -159,7 +184,7 @@ def discover_models(api_url, timeout=2.0, force=False):
     return models
 
 
-def resolve_model_name(requested_model, api_url, timeout=2.0):
+def resolve_model_name(requested_model, api_url, timeout=2.0, require_vision=False):
     """Resolve ``auto`` only when discovery produces one unambiguous choice."""
     requested = str(requested_model or "").strip()
     if requested and requested.casefold() != "auto":
@@ -167,13 +192,21 @@ def resolve_model_name(requested_model, api_url, timeout=2.0):
 
     discovery_timeout = min(max(float(timeout), 0.5), 5.0)
     models = discover_models(api_url, timeout=discovery_timeout)
+    if require_vision:
+        models = [model for model in models if model.get("vision") is True]
+        if not models:
+            raise ModelDiscoveryError(
+                "Auto model selection found no vision-capable model; "
+                "choose a vision model manually"
+            )
     loaded = [model for model in models if model.get("loaded")]
     if len(loaded) == 1:
         return loaded[0]["id"]
     if len(loaded) > 1:
         names = ", ".join(model["id"] for model in loaded)
+        model_kind = "vision models" if require_vision else "LLMs"
         raise ModelDiscoveryError(
-            f"Auto model selection is ambiguous; multiple LLMs are loaded: {names}"
+            f"Auto model selection is ambiguous; multiple {model_kind} are loaded: {names}"
         )
     if len(models) == 1:
         return models[0]["id"]
