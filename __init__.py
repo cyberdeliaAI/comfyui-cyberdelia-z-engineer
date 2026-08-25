@@ -1,11 +1,12 @@
 """
 comfyui-cyberdelia-z-engineer
-Model-independent LLM-powered prompt engineering node for ComfyUI.
+Cyberdelia Prompt Engineer: model-independent text and vision prompting.
 By Cyberdelia AI Lab — https://github.com/cyberdeliaAI
 """
 
 from .z_engineer import CyberdeliaZEngineer
 from .z_engineer_input import CyberdeliaZEngineerInput
+from .prompt_engineer_text import CyberdeliaPromptEngineerText
 
 WEB_DIRECTORY = "./web"
 
@@ -19,16 +20,19 @@ except (ImportError, AttributeError, RuntimeError) as exc:
     # optional model/preset dropdown helpers.
     import logging
 
-    logging.debug("Z-Engineer frontend routes were not registered: %s", exc)
+    logging.debug("Prompt Engineer frontend routes were not registered: %s", exc)
 
 NODE_CLASS_MAPPINGS = {
+    # Keep both legacy IDs stable so existing workflows continue to load.
     "CyberdeliaZEngineer": CyberdeliaZEngineer,
     "CyberdeliaZEngineerInput": CyberdeliaZEngineerInput,
+    "CyberdeliaPromptEngineerText": CyberdeliaPromptEngineerText,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "CyberdeliaZEngineer": "Cyberdelia Z-Engineer",
-    "CyberdeliaZEngineerInput": "Cyberdelia Z-Engineer Input",
+    "CyberdeliaZEngineer": "Cyberdelia Prompt Engineer — Conditioning",
+    "CyberdeliaZEngineerInput": "Cyberdelia Prompt Controls",
+    "CyberdeliaPromptEngineerText": "Cyberdelia Prompt Engineer — Text",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

@@ -1,27 +1,31 @@
-# comfyui-cyberdelia-z-engineer
+# Cyberdelia Prompt Engineer
 
-Model-independent, LLM-powered prompt engineering for ComfyUI. The node calls an OpenAI-compatible API, cleans and preserves the generated prompt, and CLIP-encodes it directly into sampler-ready conditioning.
+Model-independent text and vision prompt engineering for ComfyUI. Generate a reusable prompt string, or generate and CLIP-encode it directly into sampler-ready conditioning.
+
+The package and repository retain the legacy name `comfyui-cyberdelia-z-engineer` so existing installations and update paths remain compatible.
 
 By **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
 ---
 
-![Cyberdelia Z-Engineer node in ComfyUI: raw concept input on the left, engineered image prompt output on the right](assets/sample.png)
+![Cyberdelia Prompt Engineer in ComfyUI: raw concept input on the left, engineered image prompt output on the right](assets/sample.png)
 
 ## What it does
 
-**Cyberdelia Z-Engineer** sends a seed prompt to LM Studio, Ollama, or another OpenAI-compatible server. It returns:
+Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, to LM Studio, Ollama, or another OpenAI-compatible server. Two node variants share the same generation pipeline:
 
-- positive conditioning encoded from the enhanced prompt;
-- empty negative conditioning for save-node compatibility;
-- the final enhanced prompt as a string.
+| Node | CLIP required | Outputs | Best for |
+| --- | --- | --- | --- |
+| **Prompt Engineer — Text** | No | Prompt `STRING` | Krea2, Flux, external encoders, metadata, image-to-prompt |
+| **Prompt Engineer — Conditioning** | Yes | Positive, negative, prompt | Workflows that use normal CLIP conditioning directly |
 
 Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
 ## Features
 
-- **CLIP encoding built in** — no separate CLIP Text Encode node required
-- **Companion input node** — control the LLM/passthrough mode and prompt from one connectable node
+- **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
+- **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
+- **Companion Controls node** — externally control LLM/passthrough, prompt, and Vision mode
 - **Image-to-prompt vision input** — connect ComfyUI's Load Image output to describe an image with a vision model
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
@@ -30,15 +34,17 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 - **Keep terms** — preserve LoRA triggers, names, or phrases verbatim
 - **Optional constraint preservation** — conservatively retains quoted text, counts, colors, codes, and lens/aperture details
 - **Output cleaning** — strips reasoning blocks, ChatML, Markdown fences, prompt labels, negative-prompt sections, and excess whitespace
-- **Configurable error handling** — fall back to input, stop the workflow, or return empty conditioning
+- **Configurable error handling** — fall back to input, stop the workflow, or return an empty result
 - **Targeted retries** — retries transient connection, timeout, HTTP 429, and HTTP 5xx failures
 - **Metadata-friendly runtime output** — publishes the actually encoded text to compatible metadata extensions
 
 ## Requirements
 
-- A recent ComfyUI version with `clip.encode_from_tokens_scheduled`
+- A recent ComfyUI version
 - A running OpenAI-compatible chat-completions endpoint
 - `requests`
+
+The Conditioning variant additionally requires a CLIP input with `clip.encode_from_tokens_scheduled`.
 
 LM Studio is recommended because it also exposes loaded-model information through its native model API. Other OpenAI-compatible servers remain supported through the manual `model` field and `/v1/models` fallback.
 
@@ -58,27 +64,42 @@ pip install -r comfyui-cyberdelia-z-engineer/requirements.txt
 
 Restart ComfyUI after installation or updating.
 
-## Basic usage
+## Text node — no CLIP
 
-1. Add **Cyberdelia Z-Engineer** from `Cyberdelia/Prompt`.
-2. Connect the `CLIP` output from your model or LoRA loader.
+1. Add **Cyberdelia Prompt Engineer — Text** from `Cyberdelia/Prompt`.
+2. Enter a seed prompt, or connect **Load Image** and enable Vision.
+3. Choose a system-prompt preset or edit the visible prompt instructions.
+4. Set the API URL and select a model.
+5. Connect `prompt` to Krea2, another text encoder, a preview node, or an image saver.
+
+For a Krea2 workflow, the intended separation is:
+
+```text
+Load Image (optional) → Prompt Engineer — Text → Krea2 encoder → Krea2 conditioning
+```
+
+Krea2's model-specific hidden-state conditioning remains the responsibility of its encoder; Prompt Engineer supplies the reusable text.
+
+## Conditioning node
+
+1. Add **Cyberdelia Prompt Engineer — Conditioning**.
+2. Connect the `CLIP` output from the model or LoRA loader.
 3. Connect `positive` and `negative` to the sampler.
-4. Enter a seed prompt in `text`.
-5. Choose a system-prompt preset or keep `Custom` and edit `system_prompt` directly.
-6. Set the OpenAI-compatible `api_url`.
-7. Choose a discovered model, enter a manual model ID, or use `auto`.
-8. Queue the workflow.
+4. Configure text/Vision, prompt instructions, API, and model as above.
 
-## Z-Engineer Input node
+The internal ID remains `CyberdeliaZEngineer`, so workflows created with older versions continue to load with the same inputs and output indices.
 
-**Cyberdelia Z-Engineer Input** provides two reusable outputs:
+## Prompt Controls node
 
-| Output | Type | Connect to Z-Engineer |
+**Cyberdelia Prompt Controls** provides three reusable outputs. The third output was appended so the legacy `mode` and `prompt` output indices remain unchanged.
+
+| Output | Type | Connect to Prompt Engineer |
 | --- | --- | --- |
 | `mode` | `BOOLEAN` | `mode` |
 | `prompt` | `STRING` | `text` |
+| `use_vision` | `BOOLEAN` | `use_vision` |
 
-Set the toggle to **engineered (LLM)** or **passthrough (raw)** and enter the prompt in the multiline field. In the Z-Engineer node, convert the `mode` and `text` widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect both outputs. The original widgets and existing workflows remain unchanged when the companion node is not used.
+Convert the corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect the desired controls.
 
 ## Model selection
 
@@ -99,7 +120,7 @@ The node does not call LM Studio's model-management endpoints and never unloads 
 The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Image** node:
 
 1. Add **Load Image** and select an image.
-2. Connect its `IMAGE` output to Z-Engineer's `image` input.
+2. Connect its `IMAGE` output to Prompt Engineer's `image` input.
 3. Enable `use_vision`.
 4. Enter the image-specific instructions in `vision_system_prompt`.
 5. Select a model marked `[vision]`, or use `auto`.
@@ -111,9 +132,9 @@ The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Imag
 | engineered | off | Use `system_prompt` for normal text-to-prompt enhancement |
 | engineered | on | Require `image` and use `vision_system_prompt` for image-to-prompt |
 
-With `use_vision` enabled, Z-Engineer requires an image and uses `vision_system_prompt` instead of the normal `system_prompt`. The `text` field is optional: leave it empty for a direct image-to-prompt conversion, or use it to request changes, for example `Make it a night scene in Tokyo`.
+With `use_vision` enabled, Prompt Engineer requires an image and uses `vision_system_prompt` instead of the normal `system_prompt`. The `text` field is optional: leave it empty for a direct image-to-prompt conversion, or use it to request changes, for example `Make it a night scene in Tokyo`.
 
-With `auto`, Z-Engineer considers only models that LM Studio explicitly reports as vision-capable. A manually entered model ID remains available for other OpenAI-compatible servers whose model list does not expose capability metadata.
+With `auto`, Prompt Engineer considers only models that LM Studio explicitly reports as vision-capable. A manually entered model ID remains available for other OpenAI-compatible servers whose model list does not expose capability metadata.
 
 With `use_vision` disabled, the normal `system_prompt` and text-to-prompt path are used, even if an image remains connected. The first image in a vision batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block. The image is also ignored in passthrough mode.
 
@@ -165,7 +186,7 @@ It does not add model-specific instructions, force a target word count, or pad s
 | --- | --- |
 | `fallback_input` | Continue with the original seed prompt (default) |
 | `stop` | Raise the original error and stop the workflow |
-| `empty` | Return empty positive and negative conditioning |
+| `empty` | Return an empty prompt; the Conditioning node also encodes empty conditioning |
 
 `retries` defaults to `1`, meaning one initial attempt plus one retry. Retries are limited to connection errors, timeouts, HTTP 429, and HTTP 5xx responses, with a short backoff. Permanent request errors are not retried.
 
@@ -175,7 +196,7 @@ Fallback and passthrough text are never cleaned or modified.
 
 | Parameter | Description |
 | --- | --- |
-| `clip` | CLIP model used to encode the final prompt |
+| `clip` | CLIP model used only by the Conditioning node |
 | `mode` | Enhanced LLM mode or raw passthrough |
 | `text` | Input concept or seed prompt |
 | `system_prompt` | Visible instructions sent to the LLM |
@@ -198,13 +219,21 @@ Fallback and passthrough text are never cleaned or modified.
 
 ## Outputs
 
+**Prompt Engineer — Text**
+
+| Output | Type | Description |
+| --- | --- | --- |
+| `prompt` | `STRING` | Final generated, cleaned, or passthrough prompt |
+
+**Prompt Engineer — Conditioning**
+
 | Output | Type | Description |
 | --- | --- | --- |
 | `positive` | `CONDITIONING` | CLIP-encoded final prompt |
 | `negative` | `CONDITIONING` | CLIP-encoded empty string |
 | `prompt` | `STRING` | Exact text used for positive conditioning |
 
-For guaranteed metadata capture, connect `prompt` directly to the prompt-text input of your image saver. Compatible metadata extensions may also receive the resolved runtime text through the node's metadata cache integration.
+For guaranteed metadata capture, connect `prompt` directly to the prompt-text input of your image saver. Compatible metadata extensions may also receive the Conditioning node's resolved runtime text through its metadata cache integration.
 
 ## Testing
 

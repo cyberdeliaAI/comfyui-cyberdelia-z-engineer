@@ -1,5 +1,5 @@
 class CyberdeliaZEngineerInput:
-    """Provide a shared mode toggle and prompt for a Z-Engineer node."""
+    """Provide shared controls for Cyberdelia Prompt Engineer nodes."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -15,13 +15,20 @@ class CyberdeliaZEngineerInput:
                     "default": "",
                     "placeholder": "Enter your prompt here...",
                 }),
+            },
+            "optional": {
+                "use_vision": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "vision image → prompt",
+                    "label_off": "normal text → prompt",
+                }),
             }
         }
 
-    RETURN_TYPES = ("BOOLEAN", "STRING")
-    RETURN_NAMES = ("mode", "prompt")
+    RETURN_TYPES = ("BOOLEAN", "STRING", "BOOLEAN")
+    RETURN_NAMES = ("mode", "prompt", "use_vision")
     FUNCTION = "route"
     CATEGORY = "Cyberdelia/Prompt"
 
-    def route(self, mode, prompt):
-        return (mode, prompt)
+    def route(self, mode, prompt, use_vision=False):
+        return (mode, prompt, use_vision)

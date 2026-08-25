@@ -16,7 +16,7 @@ from .vision_utils import build_vision_user_content, image_to_data_url
 
 class CyberdeliaZEngineer:
     """
-    Model-independent LLM prompt engineering node for ComfyUI workflows.
+    Legacy-compatible conditioning variant of Cyberdelia Prompt Engineer.
     Sends an input prompt to an OpenAI-compatible LLM endpoint, receives an
     engineered prompt back, and CLIP-encodes it directly to a positive
     conditioning output. Also returns an empty negative conditioning for
@@ -258,7 +258,7 @@ class CyberdeliaZEngineer:
         for attempt in range(attempts):
             try:
                 print(
-                    f"[Z-Engineer] POST {endpoint} (model: {model}, "
+                    f"[Prompt Engineer] POST {endpoint} (model: {model}, "
                     f"attempt: {attempt + 1}/{attempts})"
                 )
                 response = requests.post(
@@ -274,7 +274,7 @@ class CyberdeliaZEngineer:
                     raise
                 delay = self._retry_delay(exc, attempt)
                 print(
-                    f"[Z-Engineer] Temporary LLM error: {exc}. "
+                    f"[Prompt Engineer] Temporary LLM error: {exc}. "
                     f"Retrying in {delay:g}s."
                 )
                 time.sleep(delay)
@@ -284,26 +284,27 @@ class CyberdeliaZEngineer:
     @staticmethod
     def _log_failure(exc, api_url, model, timeout):
         if isinstance(exc, requests.exceptions.ConnectionError):
-            print(f"[Z-Engineer] ⚠️  Could not reach LLM at {api_url}")
-            print("[Z-Engineer]    Server not running, wrong URL, or blocked by firewall.")
+            print(f"[Prompt Engineer] ⚠️  Could not reach LLM at {api_url}")
+            print("[Prompt Engineer]    Server not running, wrong URL, or blocked by firewall.")
         elif isinstance(exc, requests.exceptions.Timeout):
-            print(f"[Z-Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
+            print(f"[Prompt Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
         elif isinstance(exc, requests.exceptions.HTTPError):
             status = exc.response.status_code if exc.response is not None else "?"
-            print(f"[Z-Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
-            print(f"[Z-Engineer]    Check model '{model}' and the server request settings.")
+            print(f"[Prompt Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
+            print(f"[Prompt Engineer]    Check model '{model}' and the server request settings.")
         else:
-            print(f"[Z-Engineer] ⚠️  LLM call failed: {exc}")
+            print(f"[Prompt Engineer] ⚠️  LLM call failed: {exc}")
 
     # ------------------------------------------------------------------
     # Main
     # ------------------------------------------------------------------
 
-    def generate_prompt(self, clip, mode, text, system_prompt,
-                        api_url, model, seed, temperature, max_tokens, timeout,
-                        keep_terms="", preserve_constraints=False,
-                        clean_output=True, error_mode="fallback_input", retries=1,
-                        use_vision=False, vision_system_prompt="", image=None):
+    def _generate_final_text(self, mode, text, system_prompt,
+                             api_url, model, seed, temperature, max_tokens, timeout,
+                             keep_terms="", preserve_constraints=False,
+                             clean_output=True, error_mode="fallback_input", retries=1,
+                             use_vision=False, vision_system_prompt="", image=None):
+        """Run the shared text/vision prompt pipeline without encoding it."""
 
         input_text = str(text or "")
         vision_requested = bool(use_vision)
@@ -313,12 +314,12 @@ class CyberdeliaZEngineer:
         if not mode:
             # Passthrough — use raw user input
             final_text = input_text
-            print("[Z-Engineer] Passthrough mode — using input text unchanged")
+            print("[Prompt Engineer] Passthrough mode — using input text unchanged")
 
         elif not input_text.strip() and not vision_requested:
             # Engineered mode but no input — skip LLM call
             final_text = ""
-            print("[Z-Engineer] Empty input text — returning empty conditioning")
+            print("[Prompt Engineer] Empty input text — returning empty prompt")
 
         else:
             # Engineered mode — call the LLM
@@ -369,7 +370,7 @@ class CyberdeliaZEngineer:
 
                 preview = final_text[:100].replace("\n", " ")
                 print(
-                    f"[Z-Engineer] Engineered with '{resolved_model}' "
+                    f"[Prompt Engineer] Engineered with '{resolved_model}' "
                     f"{'(vision) ' if has_image else ''}"
                     f"({len(final_text)} chars): {preview}..."
                 )
@@ -379,11 +380,25 @@ class CyberdeliaZEngineer:
                 if normalized_error_mode == "stop":
                     raise
                 if normalized_error_mode == "empty":
-                    print("[Z-Engineer]    Returning empty conditioning.")
+                    print("[Prompt Engineer]    Returning empty prompt.")
                     final_text = ""
                 else:
-                    print("[Z-Engineer]    Falling back to input text (passthrough).")
+                    print("[Prompt Engineer]    Falling back to input text (passthrough).")
                     final_text = input_text
+
+        return final_text
+
+    def generate_prompt(self, clip, mode, text, system_prompt,
+                        api_url, model, seed, temperature, max_tokens, timeout,
+                        keep_terms="", preserve_constraints=False,
+                        clean_output=True, error_mode="fallback_input", retries=1,
+                        use_vision=False, vision_system_prompt="", image=None):
+
+        final_text = self._generate_final_text(
+            mode, text, system_prompt, api_url, model, seed, temperature,
+            max_tokens, timeout, keep_terms, preserve_constraints, clean_output,
+            error_mode, retries, use_vision, vision_system_prompt, image,
+        )
 
         # Step 2: push final_text to any listening metadata extension
         # so the engineered output ends up in saved image metadata

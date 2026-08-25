@@ -2,7 +2,10 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 
 
-const NODE_NAME = "CyberdeliaZEngineer";
+const NODE_NAMES = new Set([
+    "CyberdeliaZEngineer",
+    "CyberdeliaPromptEngineerText",
+]);
 const CUSTOM_PRESET = "Custom";
 const AUTO_MODEL = "Auto";
 const MANUAL_MODEL = "[use model field]";
@@ -69,7 +72,7 @@ async function refreshPresets(node) {
         selector.value = findPresetMatch(node);
         node.setDirtyCanvas?.(true, true);
     } catch (error) {
-        console.warn("[Z-Engineer] Could not refresh presets", error);
+        console.warn("[Prompt Engineer] Could not refresh presets", error);
         setComboValues(selector, [CUSTOM_PRESET, "[presets unavailable]", REFRESH_PRESETS]);
         selector.value = CUSTOM_PRESET;
     }
@@ -177,7 +180,7 @@ async function refreshModels(node, force = false) {
         selector.value = modelSelectorValue(node);
         node.setDirtyCanvas?.(true, true);
     } catch (error) {
-        console.warn("[Z-Engineer] Could not refresh models", error);
+        console.warn("[Prompt Engineer] Could not refresh models", error);
         node.__zEngineerModels = new Map();
         setComboValues(selector, [
             AUTO_MODEL,
@@ -259,7 +262,7 @@ function setupNode(node) {
 app.registerExtension({
     name: "cyberdelia.z_engineer.controls",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE_NAME) {
+        if (!NODE_NAMES.has(nodeData.name)) {
             return;
         }
 

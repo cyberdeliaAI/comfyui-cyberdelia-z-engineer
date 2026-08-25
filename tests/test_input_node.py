@@ -33,7 +33,7 @@ class InputNodeTests(unittest.TestCase):
         )
         self.assertEqual(
             package.NODE_DISPLAY_NAME_MAPPINGS["CyberdeliaZEngineerInput"],
-            "Cyberdelia Z-Engineer Input",
+            "Cyberdelia Prompt Controls",
         )
 
     def test_mode_and_prompt_outputs_match_z_engineer_inputs(self):
@@ -41,14 +41,28 @@ class InputNodeTests(unittest.TestCase):
             list(CyberdeliaZEngineerInput.INPUT_TYPES()["required"]),
             ["mode", "prompt"],
         )
-        self.assertEqual(CyberdeliaZEngineerInput.RETURN_TYPES, ("BOOLEAN", "STRING"))
-        self.assertEqual(CyberdeliaZEngineerInput.RETURN_NAMES, ("mode", "prompt"))
+        self.assertEqual(
+            list(CyberdeliaZEngineerInput.INPUT_TYPES()["optional"]),
+            ["use_vision"],
+        )
+        self.assertEqual(
+            CyberdeliaZEngineerInput.RETURN_TYPES,
+            ("BOOLEAN", "STRING", "BOOLEAN"),
+        )
+        self.assertEqual(
+            CyberdeliaZEngineerInput.RETURN_NAMES,
+            ("mode", "prompt", "use_vision"),
+        )
 
     def test_values_are_returned_unchanged(self):
         node = CyberdeliaZEngineerInput()
         prompt = "First line\nSecond line"
-        self.assertEqual(node.route(True, prompt), (True, prompt))
-        self.assertEqual(node.route(False, prompt), (False, prompt))
+        self.assertEqual(node.route(True, prompt), (True, prompt, False))
+        self.assertEqual(node.route(True, prompt, False), (True, prompt, False))
+        self.assertEqual(node.route(False, prompt, True), (False, prompt, True))
+
+    def test_legacy_outputs_remain_first(self):
+        self.assertEqual(CyberdeliaZEngineerInput.RETURN_NAMES[:2], ("mode", "prompt"))
 
 
 if __name__ == "__main__":

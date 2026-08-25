@@ -8,7 +8,7 @@ BUILTIN_PRESET_DIR = Path(__file__).resolve().parent / "presets"
 
 
 def get_user_preset_dir(create=False):
-    """Return ComfyUI's update-safe directory for Z-Engineer presets."""
+    """Return the legacy-compatible directory for Prompt Engineer presets."""
     try:
         import folder_paths
     except ImportError:

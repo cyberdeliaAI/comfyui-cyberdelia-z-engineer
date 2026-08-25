@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-cyberdelia-z-engineer"
-description = "Model-independent LLM prompt engineering with automatic model discovery, presets, output cleaning, and built-in CLIP encoding."
-version = "1.2.1"
+description = "Model-independent text and vision prompt engineering for ComfyUI, with prompt-only and CLIP-conditioning nodes."
+version = "1.3.0"
 license = { file = "LICENSE" }
 dependencies = ["requests"]
 

@@ -85,6 +85,10 @@ class NodeTests(unittest.TestCase):
         self.assertIn("use_vision", optional)
         self.assertIn("vision_system_prompt", optional)
         self.assertIn("image", optional)
+        self.assertEqual(
+            CyberdeliaZEngineer.RETURN_NAMES,
+            ("positive", "negative", "prompt"),
+        )
 
     def test_retry_then_success(self):
         with (

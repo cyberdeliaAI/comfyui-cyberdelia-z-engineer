@@ -33,7 +33,7 @@ def register_routes():
             )
             return web.json_response({"models": models})
         except Exception as exc:
-            logging.warning("Z-Engineer model discovery failed: %s", exc)
+            logging.warning("Prompt Engineer model discovery failed: %s", exc)
             return web.json_response({"error": str(exc), "models": []}, status=502)
 
     @routes.get("/cyberdelia/z-engineer/presets")
@@ -48,7 +48,7 @@ def register_routes():
                 }
             )
         except Exception as exc:
-            logging.warning("Z-Engineer preset discovery failed: %s", exc)
+            logging.warning("Prompt Engineer preset discovery failed: %s", exc)
             return web.json_response({"error": str(exc), "presets": []}, status=500)
 
     _ROUTES_REGISTERED = True
