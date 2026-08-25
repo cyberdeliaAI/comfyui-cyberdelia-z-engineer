@@ -127,7 +127,11 @@ class NodeTests(unittest.TestCase):
             "post",
             side_effect=http_error(400),
         ) as post:
-            result = self.node.generate_prompt(**self.base_args, retries=3)
+            result = self.node.generate_prompt(
+                **self.base_args,
+                retries=3,
+                error_mode="fallback_input",
+            )
         self.assertEqual(result[2], "two robots")
         self.assertEqual(post.call_count, 1)
 
@@ -163,11 +167,33 @@ class NodeTests(unittest.TestCase):
             "post",
             side_effect=requests.exceptions.ConnectionError("offline"),
         ):
-            with self.assertRaises(requests.exceptions.ConnectionError):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "could not connect to the LLM server",
+            ):
                 self.node.generate_prompt(
                     **self.base_args,
                     retries=0,
                     error_mode="stop",
+                )
+
+    def test_stop_is_the_default_error_mode(self):
+        error_mode = CyberdeliaZEngineer.INPUT_TYPES()["optional"]["error_mode"]
+        self.assertEqual(error_mode[0][0], "stop")
+        self.assertEqual(error_mode[1]["default"], "stop")
+
+        with patch.object(
+            node_module.requests,
+            "post",
+            side_effect=requests.exceptions.ConnectionError("offline"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Start the server and verify the API URL",
+            ):
+                self.node.generate_prompt(
+                    **self.base_args,
+                    retries=0,
                 )
 
     def test_cleaning_keep_terms_and_constraints_pipeline(self):

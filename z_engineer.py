@@ -99,8 +99,8 @@ class CyberdeliaZEngineer:
                     "label_on": "clean LLM output",
                     "label_off": "raw LLM output",
                 }),
-                "error_mode": (["fallback_input", "stop", "empty"], {
-                    "default": "fallback_input",
+                "error_mode": (["stop", "fallback_input", "empty"], {
+                    "default": "stop",
                 }),
                 "retries": ("INT", {
                     "default": 1,
@@ -295,6 +295,28 @@ class CyberdeliaZEngineer:
         else:
             print(f"[Prompt Engineer] ⚠️  LLM call failed: {exc}")
 
+    @staticmethod
+    def _failure_message(exc, api_url, model, timeout):
+        """Return a concise error that ComfyUI can show on the failed node."""
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return (
+                f"Prompt Engineer could not connect to the LLM server at {api_url}. "
+                "Start the server and verify the API URL."
+            )
+        if isinstance(exc, requests.exceptions.Timeout):
+            return (
+                f"Prompt Engineer received no response from the LLM within "
+                f"{timeout} seconds at {api_url}."
+            )
+        if isinstance(exc, requests.exceptions.HTTPError):
+            status = exc.response.status_code if exc.response is not None else "?"
+            return (
+                f"Prompt Engineer could not use LLM model '{model}' "
+                f"(HTTP {status} from {api_url}). Verify that the model is loaded "
+                "and supports this request."
+            )
+        return f"Prompt Engineer could not use an LLM: {exc}"
+
     # ------------------------------------------------------------------
     # Main
     # ------------------------------------------------------------------
@@ -302,7 +324,7 @@ class CyberdeliaZEngineer:
     def _generate_final_text(self, mode, text, system_prompt,
                              api_url, model, seed, temperature, max_tokens, timeout,
                              keep_terms="", preserve_constraints=False,
-                             clean_output=True, error_mode="fallback_input", retries=1,
+                             clean_output=True, error_mode="stop", retries=1,
                              use_vision=False, vision_system_prompt="", image=None):
         """Run the shared text/vision prompt pipeline without encoding it."""
 
@@ -376,9 +398,13 @@ class CyberdeliaZEngineer:
                 )
             except Exception as exc:
                 self._log_failure(exc, api_url, resolved_model, timeout)
-                normalized_error_mode = str(error_mode or "fallback_input").casefold()
+                normalized_error_mode = str(error_mode or "stop").casefold()
                 if normalized_error_mode == "stop":
-                    raise
+                    raise RuntimeError(
+                        self._failure_message(
+                            exc, api_url, resolved_model, timeout
+                        )
+                    ) from exc
                 if normalized_error_mode == "empty":
                     print("[Prompt Engineer]    Returning empty prompt.")
                     final_text = ""
@@ -391,7 +417,7 @@ class CyberdeliaZEngineer:
     def generate_prompt(self, clip, mode, text, system_prompt,
                         api_url, model, seed, temperature, max_tokens, timeout,
                         keep_terms="", preserve_constraints=False,
-                        clean_output=True, error_mode="fallback_input", retries=1,
+                        clean_output=True, error_mode="stop", retries=1,
                         use_vision=False, vision_system_prompt="", image=None):
 
         final_text = self._generate_final_text(

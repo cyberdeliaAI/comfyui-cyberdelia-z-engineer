@@ -124,6 +124,18 @@ class TextNodeTests(unittest.TestCase):
         self.assertEqual(result, ("a lighthouse in a storm",))
         post.assert_not_called()
 
+    def test_engineered_connection_failure_is_visible_by_default(self):
+        with patch.object(
+            node_module.requests,
+            "post",
+            side_effect=node_module.requests.exceptions.ConnectionError("offline"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "could not connect to the LLM server",
+            ):
+                self.node.generate_text(**self.base_args, retries=0)
+
 
 if __name__ == "__main__":
     unittest.main()

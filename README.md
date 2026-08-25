@@ -184,12 +184,14 @@ It does not add model-specific instructions, force a target word count, or pad s
 
 | Mode | Result |
 | --- | --- |
-| `fallback_input` | Continue with the original seed prompt (default) |
-| `stop` | Raise the original error and stop the workflow |
+| `stop` | Show a clear error on the node and stop the workflow (default) |
+| `fallback_input` | Continue with the original seed prompt |
 | `empty` | Return an empty prompt; the Conditioning node also encodes empty conditioning |
 
 `retries` defaults to `1`, meaning one initial attempt plus one retry. Retries are limited to connection errors, timeouts, HTTP 429, and HTTP 5xx responses, with a short backoff. Permanent request errors are not retried.
 
+The LLM connection is only used and checked in engineered mode. Passthrough
+returns the input directly without model discovery or any network request.
 Fallback and passthrough text are never cleaned or modified.
 
 ## Parameters
