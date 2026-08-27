@@ -84,6 +84,15 @@ class DanbooruTagTests(unittest.TestCase):
         self.assertEqual(kept, ["black_crop_top"])
         self.assertEqual(dropped, [])
 
+    def test_subphrase_recovery_can_be_disabled_for_existing_tag_lists(self):
+        prompt, kept, dropped = self.database.validate(
+            "best quality, invented tag qzx, 1girl",
+            recover_subtags=False,
+        )
+        self.assertEqual(prompt, "1girl")
+        self.assertEqual(kept, ["1girl"])
+        self.assertEqual(dropped, ["best quality", "invented tag qzx"])
+
     def test_tag_limit_reports_candidates_that_did_not_fit(self):
         prompt, kept, dropped = self.database.validate(
             "1girl, beach, smile",

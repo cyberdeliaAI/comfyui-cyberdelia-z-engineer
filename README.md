@@ -78,11 +78,23 @@ Restart ComfyUI after installation or updating.
 
 1. Add **Cyberdelia Danbooru Prompt** from `Cyberdelia/Prompt`.
 2. Describe the desired scene in normal language.
-3. Select the local LLM and choose `spaces` or `underscores` for tag output.
+3. Choose the desired mode, select the local LLM when using **engineered (LLM)**, and choose `spaces` or `underscores` for tag output.
 4. Keep validation enabled to remove candidates that are not in the bundled Danbooru vocabulary.
 5. Connect `prompt` to the checkpoint's text encoder. Use `tags` for custom wrapping or metadata, and `dropped_tags` to inspect filtered candidates.
 
+The three modes are:
+
+| Mode | Pipeline |
+| --- | --- |
+| `engineered (LLM)` | Natural or tag-like description → LLM candidates → validation → formatting → template |
+| `validate tags` | Existing comma-separated tag prompt → validation → formatting → template; no LLM call |
+| `raw positive` | Existing positive prompt → exact passthrough; no LLM, validation, sorting, formatting, or template |
+
+Use **validate tags** to check an existing Danbooru prompt and convert accepted multi-word tags to spaces or underscores. Each comma-separated item is checked as one complete tag, preventing an invalid phrase from surviving as an unrelated single-word fragment. Unknown tags and model-specific anchors that are absent from the Danbooru database appear in `dropped_tags`; add intentional quality anchors with the prompt template. Use **raw positive** when the entered prompt must remain completely unchanged.
+
 The node uses the same API URL normalization, automatic model discovery, retries, and visible error handling as Prompt Engineer. Fuzzy matching is disabled by default because approximate matches can change meaning; values of `0.85` or higher are the safest starting point when it is needed.
+
+The default system instruction is tuned for Illustrious-based SDXL models. It asks the LLM for visible content tags only; quality, resolution, score, and rating anchors are left to the separate prompt template so they are not filtered, reordered, or duplicated.
 
 ### Danbooru outputs
 

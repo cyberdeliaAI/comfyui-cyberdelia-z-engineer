@@ -223,6 +223,7 @@ class DanbooruTagDB:
         exclude_categories=None,
         sort_tags=True,
         tag_format="spaces",
+        recover_subtags=True,
     ):
         """Validate comma-separated candidates and return output, kept, dropped."""
         if tag_format not in {"spaces", "underscores"}:
@@ -270,7 +271,7 @@ class DanbooruTagDB:
                     kept.append((normalized, 0))
                 continue
 
-            recovered = self.extract(candidate, fuzzy_cutoff)
+            recovered = self.extract(candidate, fuzzy_cutoff) if recover_subtags else []
             if recovered:
                 results = [accept(tag) for tag in recovered]
                 if any(results):

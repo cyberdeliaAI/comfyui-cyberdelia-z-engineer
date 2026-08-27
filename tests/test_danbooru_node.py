@@ -38,7 +38,8 @@ class DanbooruNodeTests(unittest.TestCase):
     def setUp(self):
         self.node = CyberdeliaDanbooruPrompt()
         self.base_args = {
-            "text": "a blonde girl in a black crop top",
+            "mode": node_module.MODE_ENGINEERED,
+            "prompt": "a blonde girl in a black crop top",
             "system_prompt": node_module.DEFAULT_SYSTEM_PROMPT,
             "prompt_template": "{prompt}",
             "api_url": "http://localhost:1234/v1",
@@ -68,6 +69,33 @@ class DanbooruNodeTests(unittest.TestCase):
         widget = CyberdeliaDanbooruPrompt.INPUT_TYPES()["required"]["tag_format"]
         self.assertEqual(widget[0], ["spaces", "underscores"])
         self.assertEqual(widget[1]["default"], "spaces")
+
+    def test_default_system_prompt_is_illustrious_validator_aware(self):
+        widget = CyberdeliaDanbooruPrompt.INPUT_TYPES()["required"]["system_prompt"]
+        default = widget[1]["default"]
+        self.assertIn("Illustrious-based SDXL", default)
+        self.assertIn("strict Danbooru vocabulary validator", default)
+        self.assertIn("Do not add quality, resolution, score, or rating", default)
+        self.assertIn("Never produce sexualized or suggestive tags", default)
+        self.assertTrue(default.endswith("Return tags only."))
+        self.assertNotIn("/no_think", default)
+
+    def test_mode_widget_offers_all_three_pipelines(self):
+        widget = CyberdeliaDanbooruPrompt.INPUT_TYPES()["required"]["mode"]
+        self.assertEqual(
+            widget[0],
+            ["engineered (LLM)", "validate tags", "raw positive"],
+        )
+        self.assertEqual(widget[1]["default"], "engineered (LLM)")
+
+    def test_prompt_widget_has_general_placeholder(self):
+        inputs = CyberdeliaDanbooruPrompt.INPUT_TYPES()["required"]
+        self.assertIn("prompt", inputs)
+        self.assertNotIn("text", inputs)
+        self.assertEqual(
+            inputs["prompt"][1]["placeholder"],
+            "Enter your prompt here...",
+        )
 
     def test_generates_validated_space_tags(self):
         with patch.object(
@@ -105,7 +133,7 @@ class DanbooruNodeTests(unittest.TestCase):
         self.assertEqual(dropped, "")
         system_prompt = post.call_args.kwargs["json"]["messages"][0]["content"]
         self.assertIn("underscores between words", system_prompt)
-        self.assertTrue(system_prompt.endswith("/no_think"))
+        self.assertNotIn("/no_think", system_prompt)
 
     def test_template_preset_overrides_custom_template(self):
         with patch.object(
@@ -149,14 +177,65 @@ class DanbooruNodeTests(unittest.TestCase):
                 error_mode="fallback_input",
             )
 
-        self.assertEqual(tags, self.base_args["text"])
-        self.assertEqual(prompt, self.base_args["text"])
+        self.assertEqual(tags, self.base_args["prompt"])
+        self.assertEqual(prompt, self.base_args["prompt"])
         self.assertEqual(dropped, "")
 
     def test_empty_input_does_not_call_the_llm(self):
         with patch.object(llm_module.requests, "post") as post:
-            result = self.node.generate(**{**self.base_args, "text": ""})
+            result = self.node.generate(**{**self.base_args, "prompt": ""})
         self.assertEqual(result, ("", "", ""))
+        post.assert_not_called()
+
+    def test_raw_positive_returns_input_exactly_without_llm_or_validation(self):
+        raw_prompt = "masterpiece, best_quality, a cinematic portrait with blue eyes"
+        with patch.object(llm_module.requests, "post") as post:
+            result = self.node.generate(
+                **{
+                    **self.base_args,
+                    "mode": node_module.MODE_RAW,
+                    "prompt": raw_prompt,
+                    "prompt_template": "ignored, {prompt}",
+                },
+                template_preset="pony",
+            )
+
+        self.assertEqual(result, (raw_prompt, raw_prompt, ""))
+        post.assert_not_called()
+
+    def test_validate_tags_mode_checks_and_formats_without_llm(self):
+        raw_tags = (
+            "masterpiece, best quality, amazing quality, 1girl, standing, "
+            "from behind, long hair, dark hair, backpack, invented tag qzx"
+        )
+        with patch.object(llm_module.requests, "post") as post:
+            prompt, tags, dropped = self.node.generate(
+                **{
+                    **self.base_args,
+                    "mode": node_module.MODE_VALIDATE,
+                    "prompt": raw_tags,
+                    "tag_format": "underscores",
+                },
+                validate_tags=False,
+            )
+
+        self.assertEqual(
+            tags,
+            "1girl, standing, from_behind, long_hair, black_hair, backpack",
+        )
+        self.assertEqual(prompt, tags)
+        self.assertEqual(
+            dropped,
+            "masterpiece, best quality, amazing quality, invented tag qzx",
+        )
+        post.assert_not_called()
+
+    def test_legacy_boolean_modes_remain_compatible(self):
+        with patch.object(llm_module.requests, "post") as post:
+            raw_result = self.node.generate(
+                **{**self.base_args, "mode": False, "prompt": "ready prompt"}
+            )
+        self.assertEqual(raw_result, ("ready prompt", "ready prompt", ""))
         post.assert_not_called()
 
 
