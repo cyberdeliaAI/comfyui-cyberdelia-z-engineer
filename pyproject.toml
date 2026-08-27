@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-cyberdelia-z-engineer"
-description = "Model-independent text and vision prompt engineering for ComfyUI, with prompt-only and CLIP-conditioning nodes."
-version = "1.3.1"
+description = "Model-independent text, vision, and validated Danbooru prompt engineering for ComfyUI."
+version = "1.4.0"
 license = { file = "LICENSE" }
 dependencies = ["requests"]
 

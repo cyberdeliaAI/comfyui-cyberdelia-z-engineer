@@ -1,6 +1,6 @@
 # Cyberdelia Prompt Engineer
 
-Model-independent text and vision prompt engineering for ComfyUI. Generate a reusable prompt string, or generate and CLIP-encode it directly into sampler-ready conditioning.
+Model-independent text, vision, and Danbooru prompt engineering for ComfyUI. Generate a reusable prompt string, validated anime tags, or CLIP-encoded sampler-ready conditioning.
 
 The package and repository retain the legacy name `comfyui-cyberdelia-z-engineer` so existing installations and update paths remain compatible.
 
@@ -18,8 +18,11 @@ Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, t
 | --- | --- | --- | --- |
 | **Prompt Engineer — Text** | No | Prompt `STRING` | Krea2, Flux, external encoders, metadata, image-to-prompt |
 | **Prompt Engineer — Conditioning** | Yes | Positive, negative, prompt | Workflows that use normal CLIP conditioning directly |
+| **Danbooru Prompt** | No | Prompt, tags, dropped tags | Anime checkpoints trained on booru-style captions |
 
 Existing workflows can bypass the LLM with the built-in passthrough toggle.
+
+The separate **Cyberdelia Danbooru Prompt** node converts a normal scene description into real Danbooru tags, validates them against a bundled local vocabulary, and optionally wraps them in a model-family template.
 
 ## Features
 
@@ -37,6 +40,11 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 - **Configurable error handling** — fall back to input, stop the workflow, or return an empty result
 - **Targeted retries** — retries transient connection, timeout, HTTP 429, and HTTP 5xx failures
 - **Metadata-friendly runtime output** — publishes the actually encoded text to compatible metadata extensions
+- **Danbooru Prompt node** — converts natural language into validated booru-style tags
+- **140k-tag local vocabulary** — resolves canonical tags, aliases, common word forms, and recoverable sub-phrases
+- **Spaces or underscores** — output `blue eyes, long hair` or `blue_eyes, long_hair`
+- **Danbooru ordering and filtering** — sort categories, exclude categories, filter rare tags, and inspect dropped candidates
+- **Anime-model templates** — tags-only, Illustrious, Pony, Animagine XL, and Nova Anime XL
 
 ## Requirements
 
@@ -49,6 +57,8 @@ The Conditioning variant additionally requires a CLIP input with `clip.encode_fr
 LM Studio is recommended because it also exposes loaded-model information through its native model API. Other OpenAI-compatible servers remain supported through the manual `model` field and `/v1/models` fallback.
 
 Image-to-prompt additionally requires a vision-capable chat model. Pillow and PyTorch are already provided by ComfyUI.
+
+Danbooru Prompt is most useful with anime checkpoints trained on booru tags. Its bundled vocabulary contains Danbooru terminology, including NSFW tags, and is a static snapshot rather than a live connection to Danbooru.
 
 ## Installation
 
@@ -63,6 +73,28 @@ pip install -r comfyui-cyberdelia-z-engineer/requirements.txt
 ```
 
 Restart ComfyUI after installation or updating.
+
+## Danbooru Prompt node
+
+1. Add **Cyberdelia Danbooru Prompt** from `Cyberdelia/Prompt`.
+2. Describe the desired scene in normal language.
+3. Select the local LLM and choose `spaces` or `underscores` for tag output.
+4. Keep validation enabled to remove candidates that are not in the bundled Danbooru vocabulary.
+5. Connect `prompt` to the checkpoint's text encoder. Use `tags` for custom wrapping or metadata, and `dropped_tags` to inspect filtered candidates.
+
+The node uses the same API URL normalization, automatic model discovery, retries, and visible error handling as Prompt Engineer. Fuzzy matching is disabled by default because approximate matches can change meaning; values of `0.85` or higher are the safest starting point when it is needed.
+
+### Danbooru outputs
+
+| Output | Description |
+| --- | --- |
+| `prompt` | Validated tags wrapped in the custom or selected model template |
+| `tags` | Validated tags only, rendered with spaces or underscores |
+| `dropped_tags` | LLM candidates removed or only partially recovered by validation |
+
+`tag_format=spaces` produces `1girl, blue eyes, long hair`. `tag_format=underscores` produces `1girl, blue_eyes, long_hair`. Template text is left unchanged, so fixed model syntax such as Pony's `score_9` remains intact.
+
+Strict validation can recover a known sub-tag while removing an unknown modifier from a compound phrase. Such partial recovery is reported in `dropped_tags`; disable strict validation when retaining every LLM candidate intact is more important than vocabulary precision.
 
 ## Text node — no CLIP
 
@@ -254,3 +286,5 @@ MIT — see [LICENSE](LICENSE).
 Built by **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberdeliaAI)
 
 Based on [**ComfyUI-Z-Engineer**](https://github.com/BennyDaBall930/ComfyUI-Z-Engineer) by [BennyDaBall930](https://github.com/BennyDaBall930) (MIT licensed).
+
+Danbooru validation is adapted from [**ComfyUI-NeuralBooru**](https://github.com/ChrisJohnson89/ComfyUI-NeuralBooru). The bundled tag data is derived from [**a1111-sd-webui-tagcomplete**](https://github.com/DominikDoom/a1111-sd-webui-tagcomplete). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

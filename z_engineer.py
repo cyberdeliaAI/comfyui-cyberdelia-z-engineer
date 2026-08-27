@@ -233,7 +233,7 @@ class CyberdeliaZEngineer:
 
     def _call_llm(self, text, system_prompt, api_url, model,
                   seed, temperature, max_tokens, timeout, retries=1,
-                  image_data_url=None):
+                  image_data_url=None, log_label="Prompt Engineer"):
         """Send a chat completion request to the OpenAI-compatible endpoint."""
         endpoint = chat_completions_endpoint(api_url)
         headers = {"Content-Type": "application/json"}
@@ -258,7 +258,7 @@ class CyberdeliaZEngineer:
         for attempt in range(attempts):
             try:
                 print(
-                    f"[Prompt Engineer] POST {endpoint} (model: {model}, "
+                    f"[{log_label}] POST {endpoint} (model: {model}, "
                     f"attempt: {attempt + 1}/{attempts})"
                 )
                 response = requests.post(
@@ -274,7 +274,7 @@ class CyberdeliaZEngineer:
                     raise
                 delay = self._retry_delay(exc, attempt)
                 print(
-                    f"[Prompt Engineer] Temporary LLM error: {exc}. "
+                    f"[{log_label}] Temporary LLM error: {exc}. "
                     f"Retrying in {delay:g}s."
                 )
                 time.sleep(delay)
@@ -282,40 +282,40 @@ class CyberdeliaZEngineer:
         raise RuntimeError("LLM request failed without an error")
 
     @staticmethod
-    def _log_failure(exc, api_url, model, timeout):
+    def _log_failure(exc, api_url, model, timeout, log_label="Prompt Engineer"):
         if isinstance(exc, requests.exceptions.ConnectionError):
-            print(f"[Prompt Engineer] ⚠️  Could not reach LLM at {api_url}")
-            print("[Prompt Engineer]    Server not running, wrong URL, or blocked by firewall.")
+            print(f"[{log_label}] ⚠️  Could not reach LLM at {api_url}")
+            print(f"[{log_label}]    Server not running, wrong URL, or blocked by firewall.")
         elif isinstance(exc, requests.exceptions.Timeout):
-            print(f"[Prompt Engineer] ⚠️  LLM request timed out after {timeout}s at {api_url}")
+            print(f"[{log_label}] ⚠️  LLM request timed out after {timeout}s at {api_url}")
         elif isinstance(exc, requests.exceptions.HTTPError):
             status = exc.response.status_code if exc.response is not None else "?"
-            print(f"[Prompt Engineer] ⚠️  LLM returned HTTP {status} at {api_url}")
-            print(f"[Prompt Engineer]    Check model '{model}' and the server request settings.")
+            print(f"[{log_label}] ⚠️  LLM returned HTTP {status} at {api_url}")
+            print(f"[{log_label}]    Check model '{model}' and the server request settings.")
         else:
-            print(f"[Prompt Engineer] ⚠️  LLM call failed: {exc}")
+            print(f"[{log_label}] ⚠️  LLM call failed: {exc}")
 
     @staticmethod
-    def _failure_message(exc, api_url, model, timeout):
+    def _failure_message(exc, api_url, model, timeout, feature_name="Prompt Engineer"):
         """Return a concise error that ComfyUI can show on the failed node."""
         if isinstance(exc, requests.exceptions.ConnectionError):
             return (
-                f"Prompt Engineer could not connect to the LLM server at {api_url}. "
+                f"{feature_name} could not connect to the LLM server at {api_url}. "
                 "Start the server and verify the API URL."
             )
         if isinstance(exc, requests.exceptions.Timeout):
             return (
-                f"Prompt Engineer received no response from the LLM within "
+                f"{feature_name} received no response from the LLM within "
                 f"{timeout} seconds at {api_url}."
             )
         if isinstance(exc, requests.exceptions.HTTPError):
             status = exc.response.status_code if exc.response is not None else "?"
             return (
-                f"Prompt Engineer could not use LLM model '{model}' "
+                f"{feature_name} could not use LLM model '{model}' "
                 f"(HTTP {status} from {api_url}). Verify that the model is loaded "
                 "and supports this request."
             )
-        return f"Prompt Engineer could not use an LLM: {exc}"
+        return f"{feature_name} could not use an LLM: {exc}"
 
     # ------------------------------------------------------------------
     # Main

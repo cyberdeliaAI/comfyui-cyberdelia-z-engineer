@@ -2,9 +2,13 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 
 
-const NODE_NAMES = new Set([
+const PRESET_NODE_NAMES = new Set([
     "CyberdeliaZEngineer",
     "CyberdeliaPromptEngineerText",
+]);
+const MODEL_NODE_NAMES = new Set([
+    ...PRESET_NODE_NAMES,
+    "CyberdeliaDanbooruPrompt",
 ]);
 const CUSTOM_PRESET = "Custom";
 const AUTO_MODEL = "Auto";
@@ -250,11 +254,13 @@ function ensureModelSelector(node) {
 }
 
 
-function setupNode(node) {
+function setupNode(node, nodeName) {
     node.__zEngineerUiReady = true;
-    ensurePresetSelector(node);
+    if (PRESET_NODE_NAMES.has(nodeName)) {
+        ensurePresetSelector(node);
+        refreshPresets(node);
+    }
     ensureModelSelector(node);
-    refreshPresets(node);
     refreshModels(node);
 }
 
@@ -262,21 +268,21 @@ function setupNode(node) {
 app.registerExtension({
     name: "cyberdelia.z_engineer.controls",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (!NODE_NAMES.has(nodeData.name)) {
+        if (!MODEL_NODE_NAMES.has(nodeData.name)) {
             return;
         }
 
         const previousOnNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = previousOnNodeCreated?.apply(this, arguments);
-            setupNode(this);
+            setupNode(this, nodeData.name);
             return result;
         };
 
         const previousConfigure = nodeType.prototype.configure;
         nodeType.prototype.configure = function () {
             const result = previousConfigure?.apply(this, arguments);
-            setupNode(this);
+            setupNode(this, nodeData.name);
             return result;
         };
     },

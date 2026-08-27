@@ -1,12 +1,13 @@
 """
 comfyui-cyberdelia-z-engineer
-Cyberdelia Prompt Engineer: model-independent text and vision prompting.
+Cyberdelia Prompt Engineer: model-independent text, vision, and Danbooru prompting.
 By Cyberdelia AI Lab — https://github.com/cyberdeliaAI
 """
 
 from .z_engineer import CyberdeliaZEngineer
 from .z_engineer_input import CyberdeliaZEngineerInput
 from .prompt_engineer_text import CyberdeliaPromptEngineerText
+from .danbooru_node import CyberdeliaDanbooruPrompt
 
 WEB_DIRECTORY = "./web"
 
@@ -27,12 +28,14 @@ NODE_CLASS_MAPPINGS = {
     "CyberdeliaZEngineer": CyberdeliaZEngineer,
     "CyberdeliaZEngineerInput": CyberdeliaZEngineerInput,
     "CyberdeliaPromptEngineerText": CyberdeliaPromptEngineerText,
+    "CyberdeliaDanbooruPrompt": CyberdeliaDanbooruPrompt,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaZEngineer": "Cyberdelia Prompt Engineer — Conditioning",
     "CyberdeliaZEngineerInput": "Cyberdelia Prompt Controls",
     "CyberdeliaPromptEngineerText": "Cyberdelia Prompt Engineer — Text",
+    "CyberdeliaDanbooruPrompt": "Cyberdelia Danbooru Prompt",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
