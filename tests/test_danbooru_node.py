@@ -135,20 +135,10 @@ class DanbooruNodeTests(unittest.TestCase):
         self.assertIn("underscores between words", system_prompt)
         self.assertNotIn("/no_think", system_prompt)
 
-    def test_template_preset_overrides_custom_template(self):
-        with patch.object(
-            llm_module.requests,
-            "post",
-            return_value=response_with("1girl, beach"),
-        ):
-            prompt, tags, _dropped = self.node.generate(
-                **{**self.base_args, "prompt_template": "ignored, {prompt}"},
-                template_preset="pony",
-            )
-
-        self.assertEqual(tags, "1girl, beach")
-        self.assertTrue(prompt.startswith("score_9, score_8_up"))
-        self.assertNotIn("ignored", prompt)
+    def test_template_preset_widget_is_not_present(self):
+        inputs = CyberdeliaDanbooruPrompt.INPUT_TYPES()
+        self.assertNotIn("template_preset", inputs["required"])
+        self.assertNotIn("template_preset", inputs["optional"])
 
     def test_validation_can_be_disabled_but_format_is_applied(self):
         with patch.object(
@@ -197,7 +187,6 @@ class DanbooruNodeTests(unittest.TestCase):
                     "prompt": raw_prompt,
                     "prompt_template": "ignored, {prompt}",
                 },
-                template_preset="pony",
             )
 
         self.assertEqual(result, (raw_prompt, raw_prompt, ""))

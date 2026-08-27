@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-cyberdelia-z-engineer"
 description = "Model-independent text, vision, and validated Danbooru prompt engineering for ComfyUI."
-version = "1.4.0"
+version = "1.4.1"
 license = { file = "LICENSE" }
 dependencies = ["requests"]
 

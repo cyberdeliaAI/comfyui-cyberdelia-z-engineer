@@ -56,18 +56,6 @@ DEFAULT_SYSTEM_PROMPT = (
     "Return tags only."
 )
 
-TEMPLATE_PRESETS = {
-    "tags_only": "{prompt}",
-    "illustrious": "masterpiece, best quality, very aesthetic, absurdres, {prompt}",
-    "pony": "score_9, score_8_up, score_7_up, source_anime, {prompt}",
-    "animagine_xl": "{prompt}, masterpiece, best quality, very aesthetic, absurdres",
-    "nova_anime_xl": (
-        "masterpiece, best quality, amazing quality, 4k, very aesthetic, "
-        "high resolution, ultra-detailed, absurdres, newest, scenery, "
-        "{prompt}, BREAK, depth of field, volumetric lighting"
-    ),
-}
-
 MODE_ENGINEERED = "engineered (LLM)"
 MODE_VALIDATE = "validate tags"
 MODE_RAW = "raw positive"
@@ -213,9 +201,6 @@ class CyberdeliaDanbooruPrompt(CyberdeliaZEngineer):
                     "label_on": "Danbooru order",
                     "label_off": "LLM order",
                 }),
-                "template_preset": (["custom", *TEMPLATE_PRESETS], {
-                    "default": "custom",
-                }),
                 "error_mode": (["stop", "fallback_input", "empty"], {
                     "default": "stop",
                 }),
@@ -258,7 +243,6 @@ class CyberdeliaDanbooruPrompt(CyberdeliaZEngineer):
         max_tags=0,
         exclude_categories="",
         sort_tags=True,
-        template_preset="custom",
         error_mode="stop",
         retries=1,
     ):
@@ -337,7 +321,6 @@ class CyberdeliaDanbooruPrompt(CyberdeliaZEngineer):
                 raw_tags = input_text
                 is_fallback = True
 
-        template = TEMPLATE_PRESETS.get(template_preset, prompt_template)
         dropped = []
         if is_fallback:
             tags = raw_tags
@@ -356,7 +339,7 @@ class CyberdeliaDanbooruPrompt(CyberdeliaZEngineer):
         else:
             tags = format_unvalidated_tags(raw_tags, tag_format)
 
-        prompt = apply_prompt_template(template, tags)
+        prompt = apply_prompt_template(prompt_template, tags)
         print(
             f"[Danbooru Prompt] Generated {len([tag for tag in tags.split(',') if tag.strip()])} "
             f"tags; dropped {len(dropped)}"

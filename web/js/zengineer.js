@@ -15,10 +15,44 @@ const AUTO_MODEL = "Auto";
 const MANUAL_MODEL = "[use model field]";
 const REFRESH_PRESETS = "↻ Refresh presets";
 const REFRESH_MODELS = "↻ Refresh models";
+const DANBOORU_NODE = "CyberdeliaDanbooruPrompt";
+const REMOVED_DANBOORU_TEMPLATE_PRESETS = new Set([
+    "custom",
+    "tags_only",
+    "illustrious",
+    "pony",
+    "animagine_xl",
+    "nova_anime_xl",
+]);
+const DANBOORU_ERROR_MODES = new Set(["stop", "fallback_input", "empty"]);
 
 
 function getWidget(node, name) {
     return node.widgets?.find((widget) => widget.name === name) ?? null;
+}
+
+
+function migrateRemovedDanbooruTemplatePreset(info) {
+    const values = info?.widgets_values;
+    if (!Array.isArray(values)) {
+        return info;
+    }
+
+    // The removed preset was one of the final optional widgets. Delete its
+    // serialized value so error_mode and retries remain aligned in old workflows.
+    const presetIndex = values.findIndex((value, index) => (
+        index >= 10
+        && REMOVED_DANBOORU_TEMPLATE_PRESETS.has(value)
+        && DANBOORU_ERROR_MODES.has(values[index + 1])
+        && Number.isInteger(values[index + 2])
+    ));
+    if (presetIndex < 0) {
+        return info;
+    }
+
+    const migratedValues = [...values];
+    migratedValues.splice(presetIndex, 1);
+    return { ...info, widgets_values: migratedValues };
 }
 
 
@@ -280,8 +314,11 @@ app.registerExtension({
         };
 
         const previousConfigure = nodeType.prototype.configure;
-        nodeType.prototype.configure = function () {
-            const result = previousConfigure?.apply(this, arguments);
+        nodeType.prototype.configure = function (info, ...rest) {
+            const resolvedInfo = nodeData.name === DANBOORU_NODE
+                ? migrateRemovedDanbooruTemplatePreset(info)
+                : info;
+            const result = previousConfigure?.call(this, resolvedInfo, ...rest);
             setupNode(this, nodeData.name);
             return result;
         };
