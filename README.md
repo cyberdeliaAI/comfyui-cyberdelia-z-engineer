@@ -1,5 +1,12 @@
 # Cyberdelia Prompt Engineer
 
+<p align="center">
+  <img src="assets/icon.png" alt="Cyberdelia Prompt Engineer icon" width="200">
+</p>
+
+[![Tests](https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer/actions/workflows/tests.yml/badge.svg)](https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Model-independent text, vision, and Danbooru prompt engineering for ComfyUI. Generate a reusable prompt string, validated anime tags, or CLIP-encoded sampler-ready conditioning.
 
 The package and repository retain the legacy name `comfyui-cyberdelia-z-engineer` so existing installations and update paths remain compatible.
