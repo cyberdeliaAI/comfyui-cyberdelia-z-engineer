@@ -84,10 +84,56 @@ class NodeTests(unittest.TestCase):
         optional = CyberdeliaZEngineer.INPUT_TYPES()["optional"]
         self.assertIn("use_vision", optional)
         self.assertIn("vision_system_prompt", optional)
+        self.assertIn("active_system_prompt", optional)
+        self.assertTrue(optional["active_system_prompt"][1]["forceInput"])
         self.assertIn("image", optional)
         self.assertEqual(
             CyberdeliaZEngineer.RETURN_NAMES,
             ("positive", "negative", "prompt"),
+        )
+
+    def test_active_system_prompt_overrides_normal_system_prompt(self):
+        with patch.object(
+            node_module.requests,
+            "post",
+            return_value=response_with("A controlled result."),
+        ) as post:
+            self.node.generate_prompt(
+                **self.base_args,
+                active_system_prompt="Instructions selected in Prompt Controls.",
+            )
+
+        messages = post.call_args.kwargs["json"]["messages"]
+        self.assertEqual(
+            messages[0]["content"],
+            "Instructions selected in Prompt Controls.",
+        )
+
+    def test_active_system_prompt_overrides_vision_system_prompt(self):
+        with (
+            patch.object(
+                node_module,
+                "image_to_data_url",
+                return_value="data:image/jpeg;base64,example",
+            ),
+            patch.object(
+                node_module.requests,
+                "post",
+                return_value=response_with("A controlled Vision result."),
+            ) as post,
+        ):
+            self.node.generate_prompt(
+                **self.base_args,
+                use_vision=True,
+                vision_system_prompt="Unused local Vision instructions.",
+                active_system_prompt="Vision instructions selected in Prompt Controls.",
+                image=object(),
+            )
+
+        messages = post.call_args.kwargs["json"]["messages"]
+        self.assertEqual(
+            messages[0]["content"],
+            "Vision instructions selected in Prompt Controls.",
         )
 
     def test_retry_then_success(self):

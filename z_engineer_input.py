@@ -22,13 +22,18 @@ class CyberdeliaZEngineerInput:
                     "label_on": "vision image → prompt",
                     "label_off": "normal text → prompt",
                 }),
+                "active_system_prompt": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "Choose a system or Vision preset...",
+                }),
             }
         }
 
-    RETURN_TYPES = ("BOOLEAN", "STRING", "BOOLEAN")
-    RETURN_NAMES = ("mode", "prompt", "use_vision")
+    RETURN_TYPES = ("BOOLEAN", "STRING", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("mode", "prompt", "use_vision", "active_system_prompt")
     FUNCTION = "route"
     CATEGORY = "Cyberdelia/Prompt"
 
-    def route(self, mode, prompt, use_vision=False):
-        return (mode, prompt, use_vision)
+    def route(self, mode, prompt, use_vision=False, active_system_prompt=""):
+        return (mode, prompt, use_vision, active_system_prompt)

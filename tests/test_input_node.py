@@ -43,26 +43,32 @@ class InputNodeTests(unittest.TestCase):
         )
         self.assertEqual(
             list(CyberdeliaZEngineerInput.INPUT_TYPES()["optional"]),
-            ["use_vision"],
+            ["use_vision", "active_system_prompt"],
         )
         self.assertEqual(
             CyberdeliaZEngineerInput.RETURN_TYPES,
-            ("BOOLEAN", "STRING", "BOOLEAN"),
+            ("BOOLEAN", "STRING", "BOOLEAN", "STRING"),
         )
         self.assertEqual(
             CyberdeliaZEngineerInput.RETURN_NAMES,
-            ("mode", "prompt", "use_vision"),
+            ("mode", "prompt", "use_vision", "active_system_prompt"),
         )
 
     def test_values_are_returned_unchanged(self):
         node = CyberdeliaZEngineerInput()
         prompt = "First line\nSecond line"
-        self.assertEqual(node.route(True, prompt), (True, prompt, False))
-        self.assertEqual(node.route(True, prompt, False), (True, prompt, False))
-        self.assertEqual(node.route(False, prompt, True), (False, prompt, True))
+        self.assertEqual(node.route(True, prompt), (True, prompt, False, ""))
+        self.assertEqual(node.route(True, prompt, False), (True, prompt, False, ""))
+        self.assertEqual(
+            node.route(False, prompt, True, "Vision instructions"),
+            (False, prompt, True, "Vision instructions"),
+        )
 
     def test_legacy_outputs_remain_first(self):
-        self.assertEqual(CyberdeliaZEngineerInput.RETURN_NAMES[:2], ("mode", "prompt"))
+        self.assertEqual(
+            CyberdeliaZEngineerInput.RETURN_NAMES[:3],
+            ("mode", "prompt", "use_vision"),
+        )
 
 
 if __name__ == "__main__":

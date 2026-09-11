@@ -1,10 +1,11 @@
-"""Load bundled and user-authored system-prompt presets."""
+"""Load bundled and user-authored system and Vision prompt presets."""
 
 from pathlib import Path
 
 
 MAX_PRESET_BYTES = 64 * 1024
 BUILTIN_PRESET_DIR = Path(__file__).resolve().parent / "presets"
+BUILTIN_VISION_PRESET_DIR = Path(__file__).resolve().parent / "vision_presets"
 
 
 def get_user_preset_dir(create=False):
@@ -15,6 +16,19 @@ def get_user_preset_dir(create=False):
         return None
 
     directory = Path(folder_paths.get_user_directory()) / "z_engineer" / "presets"
+    if create:
+        directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def get_user_vision_preset_dir(create=False):
+    """Return the directory for user-authored Vision prompt presets."""
+    try:
+        import folder_paths
+    except ImportError:
+        return None
+
+    directory = Path(folder_paths.get_user_directory()) / "z_engineer" / "vision_presets"
     if create:
         directory.mkdir(parents=True, exist_ok=True)
     return directory
@@ -50,14 +64,9 @@ def _load_directory(directory, source):
     return presets
 
 
-def list_presets(create_user_directory=False):
-    """Return built-in presets followed by user presets.
-
-    A user preset with the same filename as a built-in remains separately
-    addressable with a ``(User)`` suffix in the UI.
-    """
-    builtins = _load_directory(BUILTIN_PRESET_DIR, "builtin")
-    user_directory = get_user_preset_dir(create=create_user_directory)
+def _merge_presets(builtin_directory, user_directory):
+    """Return built-in presets followed by uniquely labelled user presets."""
+    builtins = _load_directory(builtin_directory, "builtin")
     user_presets = _load_directory(user_directory, "user")
 
     used_names = {preset["name"].casefold() for preset in builtins}
@@ -66,3 +75,15 @@ def list_presets(create_user_directory=False):
             preset["name"] = f"{preset['name']} (User)"
         used_names.add(preset["name"].casefold())
     return builtins + user_presets
+
+
+def list_presets(create_user_directory=False):
+    """Return built-in system presets followed by user system presets."""
+    user_directory = get_user_preset_dir(create=create_user_directory)
+    return _merge_presets(BUILTIN_PRESET_DIR, user_directory)
+
+
+def list_vision_presets(create_user_directory=False):
+    """Return built-in Vision presets followed by user Vision presets."""
+    user_directory = get_user_vision_preset_dir(create=create_user_directory)
+    return _merge_presets(BUILTIN_VISION_PRESET_DIR, user_directory)

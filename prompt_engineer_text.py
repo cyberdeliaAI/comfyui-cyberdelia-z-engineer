@@ -23,10 +23,12 @@ class CyberdeliaPromptEngineerText(CyberdeliaZEngineer):
                       api_url, model, seed, temperature, max_tokens, timeout,
                       keep_terms="", preserve_constraints=False,
                       clean_output=True, error_mode="stop", retries=1,
-                      use_vision=False, vision_system_prompt="", image=None):
+                      use_vision=False, vision_system_prompt="", image=None,
+                      active_system_prompt=""):
         final_text = self._generate_final_text(
             mode, text, system_prompt, api_url, model, seed, temperature,
             max_tokens, timeout, keep_terms, preserve_constraints, clean_output,
             error_mode, retries, use_vision, vision_system_prompt, image,
+            active_system_prompt,
         )
         return (final_text,)

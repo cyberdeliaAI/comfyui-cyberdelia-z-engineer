@@ -39,8 +39,8 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 - **Image-to-prompt vision input** — connect ComfyUI's Load Image output to describe an image with a vision model
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
-- **System-prompt presets** — one bundled Cyberdelia preset plus user-authored `.txt` presets
-- **Visible preset content** — selecting a preset fills the normal, editable `system_prompt` field
+- **Separate system and Vision presets** — bundled defaults plus user-authored `.txt` presets
+- **Visible preset content** — selecting a preset fills its normal, editable prompt field
 - **Keep terms** — preserve LoRA triggers, names, or phrases verbatim
 - **Optional constraint preservation** — conservatively retains quoted text, counts, colors, codes, and lens/aperture details
 - **Output cleaning** — strips reasoning blocks, ChatML, Markdown fences, prompt labels, negative-prompt sections, and excess whitespace
@@ -143,15 +143,18 @@ The internal ID remains `CyberdeliaZEngineer`, so workflows created with older v
 
 ## Prompt Controls node
 
-**Cyberdelia Prompt Controls** provides three reusable outputs. The third output was appended so the legacy `mode` and `prompt` output indices remain unchanged.
+**Cyberdelia Prompt Controls** provides four reusable outputs. The newer outputs were appended, so all existing output indices remain unchanged.
 
 | Output | Type | Connect to Prompt Engineer |
 | --- | --- | --- |
 | `mode` | `BOOLEAN` | `mode` |
 | `prompt` | `STRING` | `text` |
 | `use_vision` | `BOOLEAN` | `use_vision` |
+| `active_system_prompt` | `STRING` | `active_system_prompt` |
 
-Convert the corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect the desired controls.
+The frontend preset selector follows `use_vision` automatically: normal-text mode lists system presets, while Vision mode lists Vision presets. Selecting one copies its complete text into the visible `active_system_prompt` field, which is stored in the workflow. Connect that output directly to the matching `active_system_prompt` socket on either Prompt Engineer node.
+
+When the connected value is non-empty, it overrides the Prompt Engineer node's local `system_prompt` or `vision_system_prompt`, depending on `use_vision`. Leave it disconnected or empty to keep using the local fields. Convert the other corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect the desired controls.
 
 ## Model selection
 
@@ -174,7 +177,7 @@ The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Imag
 1. Add **Load Image** and select an image.
 2. Connect its `IMAGE` output to Prompt Engineer's `image` input.
 3. Enable `use_vision`.
-4. Enter the image-specific instructions in `vision_system_prompt`.
+4. Choose a Vision preset or enter image-specific instructions in `vision_system_prompt`.
 5. Select a model marked `[vision]`, or use `auto`.
 6. Enable **engineered (LLM)** and queue the workflow.
 
@@ -188,11 +191,13 @@ With `use_vision` enabled, Prompt Engineer requires an image and uses `vision_sy
 
 With `auto`, Prompt Engineer considers only models that LM Studio explicitly reports as vision-capable. A manually entered model ID remains available for other OpenAI-compatible servers whose model list does not expose capability metadata.
 
-With `use_vision` disabled, the normal `system_prompt` and text-to-prompt path are used, even if an image remains connected. The first image in a vision batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block. The image is also ignored in passthrough mode.
+With `use_vision` enabled, the first image in a vision batch is resized to a maximum dimension of 1536 pixels, encoded locally, and sent as a base64 image content block.
 
-## Presets
+With `use_vision` disabled, the normal `system_prompt` and text-to-prompt path are used, even if an image remains connected. The image is also ignored in passthrough mode.
 
-The bundled preset is **Cyberdelia Detailed 200–250**. `Custom` remains the default and uses the visible `system_prompt` value unchanged.
+## System and Vision presets
+
+The bundled system preset is **Cyberdelia Detailed 200–250**. The bundled Vision preset is **Cyberdelia Faithful Image Caption**. `Custom` remains the default for both selectors and uses the corresponding visible prompt value unchanged.
 
 The requested 200–250-word range is an instruction to the selected model; the node does not mechanically rewrite or pad the result to enforce that length.
 
@@ -202,9 +207,15 @@ To add a personal preset, create a UTF-8 `.txt` file in:
 ComfyUI/user/z_engineer/presets/
 ```
 
-If ComfyUI was started with a custom user directory, the `z_engineer/presets` folder is created under that directory instead. The filename becomes the dropdown label and the complete file content becomes the system prompt.
+For a personal Vision preset, use:
 
-Choose **↻ Refresh presets** after adding or editing a file. Selecting a preset copies its full text into `system_prompt`; editing that field switches the selector back to `Custom`. Because the actual text is stored in the workflow, old workflows stay reproducible if a preset file later changes.
+```text
+ComfyUI/user/z_engineer/vision_presets/
+```
+
+If ComfyUI was started with a custom user directory, both folders are created under that directory instead. The filename becomes the dropdown label and the complete file content becomes the corresponding system or Vision prompt.
+
+Choose **↻ Refresh presets** or **↻ Refresh vision presets** after adding or editing a file. Selecting a preset copies its full text into `system_prompt` or `vision_system_prompt`; editing that field switches only its own selector back to `Custom`. Because the actual text is stored in the workflow, old workflows stay reproducible if a preset file later changes.
 
 Presets intentionally contain no model or sampling settings.
 

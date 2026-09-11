@@ -4,7 +4,12 @@ import asyncio
 import logging
 
 from .model_utils import discover_models
-from .preset_manager import get_user_preset_dir, list_presets
+from .preset_manager import (
+    get_user_preset_dir,
+    get_user_vision_preset_dir,
+    list_presets,
+    list_vision_presets,
+)
 
 
 _ROUTES_REGISTERED = False
@@ -49,6 +54,21 @@ def register_routes():
             )
         except Exception as exc:
             logging.warning("Prompt Engineer preset discovery failed: %s", exc)
+            return web.json_response({"error": str(exc), "presets": []}, status=500)
+
+    @routes.get("/cyberdelia/z-engineer/vision-presets")
+    async def zengineer_vision_presets(_request):
+        try:
+            presets = await asyncio.to_thread(list_vision_presets, True)
+            user_directory = get_user_vision_preset_dir(create=False)
+            return web.json_response(
+                {
+                    "presets": presets,
+                    "user_directory": str(user_directory) if user_directory else None,
+                }
+            )
+        except Exception as exc:
+            logging.warning("Prompt Engineer Vision preset discovery failed: %s", exc)
             return web.json_response({"error": str(exc), "presets": []}, status=500)
 
     _ROUTES_REGISTERED = True

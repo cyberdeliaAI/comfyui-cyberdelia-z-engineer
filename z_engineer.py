@@ -121,6 +121,9 @@ class CyberdeliaZEngineer:
                     ),
                     "placeholder": "Instructions used only when Vision is enabled...",
                 }),
+                "active_system_prompt": ("STRING", {
+                    "forceInput": True,
+                }),
                 "image": ("IMAGE",),
             },
         }
@@ -325,7 +328,8 @@ class CyberdeliaZEngineer:
                              api_url, model, seed, temperature, max_tokens, timeout,
                              keep_terms="", preserve_constraints=False,
                              clean_output=True, error_mode="stop", retries=1,
-                             use_vision=False, vision_system_prompt="", image=None):
+                             use_vision=False, vision_system_prompt="", image=None,
+                             active_system_prompt=""):
         """Run the shared text/vision prompt pipeline without encoding it."""
 
         input_text = str(text or "")
@@ -365,7 +369,8 @@ class CyberdeliaZEngineer:
                     parsed_keep_terms,
                     constraints,
                 )
-                selected_system_prompt = (
+                prompt_override = str(active_system_prompt or "").strip()
+                selected_system_prompt = prompt_override or (
                     vision_system_prompt if vision_requested else system_prompt
                 )
                 resolved_system_prompt = str(selected_system_prompt or "").strip()
@@ -418,12 +423,14 @@ class CyberdeliaZEngineer:
                         api_url, model, seed, temperature, max_tokens, timeout,
                         keep_terms="", preserve_constraints=False,
                         clean_output=True, error_mode="stop", retries=1,
-                        use_vision=False, vision_system_prompt="", image=None):
+                        use_vision=False, vision_system_prompt="", image=None,
+                        active_system_prompt=""):
 
         final_text = self._generate_final_text(
             mode, text, system_prompt, api_url, model, seed, temperature,
             max_tokens, timeout, keep_terms, preserve_constraints, clean_output,
             error_mode, retries, use_vision, vision_system_prompt, image,
+            active_system_prompt,
         )
 
         # Step 2: push final_text to any listening metadata extension

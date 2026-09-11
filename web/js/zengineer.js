@@ -14,8 +14,10 @@ const CUSTOM_PRESET = "Custom";
 const AUTO_MODEL = "Auto";
 const MANUAL_MODEL = "[use model field]";
 const REFRESH_PRESETS = "↻ Refresh presets";
+const REFRESH_VISION_PRESETS = "↻ Refresh vision presets";
 const REFRESH_MODELS = "↻ Refresh models";
 const DANBOORU_NODE = "CyberdeliaDanbooruPrompt";
+const CONTROL_NODE = "CyberdeliaZEngineerInput";
 const REMOVED_DANBOORU_TEMPLATE_PRESETS = new Set([
     "custom",
     "tags_only",
@@ -25,6 +27,30 @@ const REMOVED_DANBOORU_TEMPLATE_PRESETS = new Set([
     "nova_anime_xl",
 ]);
 const DANBOORU_ERROR_MODES = new Set(["stop", "fallback_input", "empty"]);
+const PROMPT_PRESET_CONFIGS = [
+    {
+        selectorName: "system_prompt_preset_selector",
+        promptName: "system_prompt",
+        presetsProperty: "__zEngineerPresets",
+        applyingProperty: "__zEngineerApplyingPreset",
+        trackingProperty: "__zEngineerPresetTracking",
+        endpoint: "/cyberdelia/z-engineer/presets",
+        refreshLabel: REFRESH_PRESETS,
+        unavailableLabel: "[presets unavailable]",
+        logName: "system",
+    },
+    {
+        selectorName: "vision_prompt_preset_selector",
+        promptName: "vision_system_prompt",
+        presetsProperty: "__zEngineerVisionPresets",
+        applyingProperty: "__zEngineerApplyingVisionPreset",
+        trackingProperty: "__zEngineerVisionPresetTracking",
+        endpoint: "/cyberdelia/z-engineer/vision-presets",
+        refreshLabel: REFRESH_VISION_PRESETS,
+        unavailableLabel: "[vision presets unavailable]",
+        logName: "Vision",
+    },
+];
 
 
 function getWidget(node, name) {
@@ -80,9 +106,9 @@ function setComboValues(widget, values) {
 }
 
 
-function findPresetMatch(node) {
-    const prompt = String(getWidget(node, "system_prompt")?.value ?? "").trim();
-    for (const [name, value] of node.__zEngineerPresets ?? []) {
+function findPresetMatch(node, config) {
+    const prompt = String(getWidget(node, config.promptName)?.value ?? "").trim();
+    for (const [name, value] of node[config.presetsProperty] ?? []) {
         if (String(value).trim() === prompt) {
             return name;
         }
@@ -91,82 +117,237 @@ function findPresetMatch(node) {
 }
 
 
-async function refreshPresets(node) {
-    const selector = getWidget(node, "system_prompt_preset_selector");
+function syncPresetSelector(node, selector, config) {
+    if (!selector || node[config.applyingProperty]) {
+        return;
+    }
+    const matchingPreset = findPresetMatch(node, config);
+    if (selector.value !== matchingPreset) {
+        selector.value = matchingPreset;
+        node.setDirtyCanvas?.(true, false);
+    }
+}
+
+
+async function refreshPresets(node, config) {
+    const selector = getWidget(node, config.selectorName);
     if (!selector) {
         return;
     }
     try {
-        const response = await api.fetchApi("/cyberdelia/z-engineer/presets");
+        const response = await api.fetchApi(config.endpoint);
         const payload = await response.json();
         if (!response.ok) {
             throw new Error(payload.error || `HTTP ${response.status}`);
         }
-        node.__zEngineerPresets = new Map(
+        node[config.presetsProperty] = new Map(
             (payload.presets ?? []).map((preset) => [preset.name, preset.prompt])
         );
-        const values = [CUSTOM_PRESET, ...node.__zEngineerPresets.keys(), REFRESH_PRESETS];
+        const values = [
+            CUSTOM_PRESET,
+            ...node[config.presetsProperty].keys(),
+            config.refreshLabel,
+        ];
         setComboValues(selector, values);
-        selector.value = findPresetMatch(node);
+        syncPresetSelector(node, selector, config);
         node.setDirtyCanvas?.(true, true);
     } catch (error) {
-        console.warn("[Prompt Engineer] Could not refresh presets", error);
-        setComboValues(selector, [CUSTOM_PRESET, "[presets unavailable]", REFRESH_PRESETS]);
+        console.warn(`[Prompt Engineer] Could not refresh ${config.logName} presets`, error);
+        setComboValues(selector, [
+            CUSTOM_PRESET,
+            config.unavailableLabel,
+            config.refreshLabel,
+        ]);
         selector.value = CUSTOM_PRESET;
     }
 }
 
 
-function ensurePresetSelector(node) {
-    let selector = getWidget(node, "system_prompt_preset_selector");
+function ensurePresetSelector(node, config) {
+    let selector = getWidget(node, config.selectorName);
     if (selector) {
         return selector;
     }
 
     selector = markFrontendOnly(node.addWidget(
         "combo",
-        "system_prompt_preset_selector",
+        config.selectorName,
         CUSTOM_PRESET,
         async (value) => {
-            if (value === REFRESH_PRESETS) {
-                await refreshPresets(node);
+            if (value === config.refreshLabel) {
+                await refreshPresets(node, config);
                 return;
             }
-            if (value === CUSTOM_PRESET || !node.__zEngineerPresets?.has(value)) {
+            const presets = node[config.presetsProperty];
+            if (value === CUSTOM_PRESET || !presets?.has(value)) {
                 return;
             }
-            const systemPrompt = getWidget(node, "system_prompt");
-            if (!systemPrompt) {
+            const promptWidget = getWidget(node, config.promptName);
+            if (!promptWidget) {
                 return;
             }
-            node.__zEngineerApplyingPreset = true;
+            node[config.applyingProperty] = true;
             try {
-                setWidgetValue(systemPrompt, node.__zEngineerPresets.get(value));
+                setWidgetValue(promptWidget, presets.get(value));
             } finally {
-                node.__zEngineerApplyingPreset = false;
+                node[config.applyingProperty] = false;
             }
-            selector.value = value;
+            syncPresetSelector(node, selector, config);
             node.setDirtyCanvas?.(true, true);
         },
-        { values: [CUSTOM_PRESET, REFRESH_PRESETS] }
+        { values: [CUSTOM_PRESET, config.refreshLabel] }
     ));
 
-    const systemPrompt = getWidget(node, "system_prompt");
-    if (systemPrompt && !systemPrompt.__zEngineerPresetTracking) {
-        const previousCallback = systemPrompt.callback;
-        systemPrompt.callback = function (...args) {
+    const promptWidget = getWidget(node, config.promptName);
+    if (promptWidget && !promptWidget[config.trackingProperty]) {
+        const previousCallback = promptWidget.callback;
+        promptWidget.callback = function (...args) {
             const result = previousCallback?.apply(this, args);
-            if (!node.__zEngineerApplyingPreset) {
-                selector.value = CUSTOM_PRESET;
-            }
+            syncPresetSelector(node, selector, config);
             return result;
         };
-        systemPrompt.inputEl?.addEventListener("input", () => {
-            if (!node.__zEngineerApplyingPreset) {
-                selector.value = CUSTOM_PRESET;
-            }
+        promptWidget.inputEl?.addEventListener("input", () => {
+            // Let ComfyUI update the widget value before comparing it with the
+            // preset. Programmatic callbacks during execution are not edits.
+            requestAnimationFrame(() => syncPresetSelector(node, selector, config));
         });
-        systemPrompt.__zEngineerPresetTracking = true;
+        promptWidget[config.trackingProperty] = true;
+    }
+    return selector;
+}
+
+
+function activeControlPresetConfig(node) {
+    return getWidget(node, "use_vision")?.value
+        ? PROMPT_PRESET_CONFIGS[1]
+        : PROMPT_PRESET_CONFIGS[0];
+}
+
+
+function syncControlPresetSelector(node) {
+    const selector = node.__zEngineerControlPresetSelector;
+    if (!selector || node.__zEngineerApplyingControlPreset) {
+        return;
+    }
+    const config = activeControlPresetConfig(node);
+    const prompt = String(getWidget(node, "active_system_prompt")?.value ?? "").trim();
+    let matchingPreset = CUSTOM_PRESET;
+    for (const [name, value] of node[config.presetsProperty] ?? []) {
+        if (String(value).trim() === prompt) {
+            matchingPreset = name;
+            break;
+        }
+    }
+    selector.name = config.selectorName;
+    if (selector.value !== matchingPreset) {
+        selector.value = matchingPreset;
+        node.setDirtyCanvas?.(true, false);
+    }
+}
+
+
+async function refreshControlPresets(node) {
+    const selector = node.__zEngineerControlPresetSelector;
+    if (!selector) {
+        return;
+    }
+    const config = activeControlPresetConfig(node);
+    selector.name = config.selectorName;
+    try {
+        const response = await api.fetchApi(config.endpoint);
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        // Ignore a stale response when Vision was toggled while loading.
+        if (activeControlPresetConfig(node) !== config) {
+            return;
+        }
+        node[config.presetsProperty] = new Map(
+            (payload.presets ?? []).map((preset) => [preset.name, preset.prompt])
+        );
+        setComboValues(selector, [
+            CUSTOM_PRESET,
+            ...node[config.presetsProperty].keys(),
+            config.refreshLabel,
+        ]);
+        syncControlPresetSelector(node);
+        node.setDirtyCanvas?.(true, true);
+    } catch (error) {
+        if (activeControlPresetConfig(node) !== config) {
+            return;
+        }
+        console.warn(`[Prompt Controls] Could not refresh ${config.logName} presets`, error);
+        setComboValues(selector, [
+            CUSTOM_PRESET,
+            config.unavailableLabel,
+            config.refreshLabel,
+        ]);
+        selector.value = CUSTOM_PRESET;
+    }
+}
+
+
+function ensureControlPresetSelector(node) {
+    if (node.__zEngineerControlPresetSelector) {
+        return node.__zEngineerControlPresetSelector;
+    }
+
+    const initialConfig = activeControlPresetConfig(node);
+    const selector = markFrontendOnly(node.addWidget(
+        "combo",
+        initialConfig.selectorName,
+        CUSTOM_PRESET,
+        async (value) => {
+            const config = activeControlPresetConfig(node);
+            if (value === config.refreshLabel) {
+                await refreshControlPresets(node);
+                return;
+            }
+            const presets = node[config.presetsProperty];
+            if (value === CUSTOM_PRESET || !presets?.has(value)) {
+                return;
+            }
+            const promptWidget = getWidget(node, "active_system_prompt");
+            if (!promptWidget) {
+                return;
+            }
+            node.__zEngineerApplyingControlPreset = true;
+            try {
+                setWidgetValue(promptWidget, presets.get(value));
+            } finally {
+                node.__zEngineerApplyingControlPreset = false;
+            }
+            syncControlPresetSelector(node);
+            node.setDirtyCanvas?.(true, true);
+        },
+        { values: [CUSTOM_PRESET, initialConfig.refreshLabel] }
+    ));
+    node.__zEngineerControlPresetSelector = selector;
+
+    const promptWidget = getWidget(node, "active_system_prompt");
+    if (promptWidget && !promptWidget.__zEngineerControlPresetTracking) {
+        const previousCallback = promptWidget.callback;
+        promptWidget.callback = function (...args) {
+            const result = previousCallback?.apply(this, args);
+            syncControlPresetSelector(node);
+            return result;
+        };
+        promptWidget.inputEl?.addEventListener("input", () => {
+            requestAnimationFrame(() => syncControlPresetSelector(node));
+        });
+        promptWidget.__zEngineerControlPresetTracking = true;
+    }
+
+    const useVisionWidget = getWidget(node, "use_vision");
+    if (useVisionWidget && !useVisionWidget.__zEngineerControlPresetTracking) {
+        const previousCallback = useVisionWidget.callback;
+        useVisionWidget.callback = function (...args) {
+            const result = previousCallback?.apply(this, args);
+            refreshControlPresets(node);
+            return result;
+        };
+        useVisionWidget.__zEngineerControlPresetTracking = true;
     }
     return selector;
 }
@@ -290,9 +471,16 @@ function ensureModelSelector(node) {
 
 function setupNode(node, nodeName) {
     node.__zEngineerUiReady = true;
+    if (nodeName === CONTROL_NODE) {
+        ensureControlPresetSelector(node);
+        refreshControlPresets(node);
+        return;
+    }
     if (PRESET_NODE_NAMES.has(nodeName)) {
-        ensurePresetSelector(node);
-        refreshPresets(node);
+        for (const config of PROMPT_PRESET_CONFIGS) {
+            ensurePresetSelector(node, config);
+            refreshPresets(node, config);
+        }
     }
     ensureModelSelector(node);
     refreshModels(node);
@@ -302,7 +490,7 @@ function setupNode(node, nodeName) {
 app.registerExtension({
     name: "cyberdelia.z_engineer.controls",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (!MODEL_NODE_NAMES.has(nodeData.name)) {
+        if (!MODEL_NODE_NAMES.has(nodeData.name) && nodeData.name !== CONTROL_NODE) {
             return;
         }
 
