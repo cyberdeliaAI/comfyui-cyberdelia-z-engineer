@@ -35,7 +35,7 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
 - **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
-- **Companion Controls node** — externally control LLM/passthrough, prompt, and Vision mode
+- **Two companion Controls nodes** — choose the original compact controls or preset-aware controls
 - **Image-to-prompt vision input** — connect ComfyUI's Load Image output to describe an image with a vision model
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
@@ -141,9 +141,19 @@ Krea2's model-specific hidden-state conditioning remains the responsibility of i
 
 The internal ID remains `CyberdeliaZEngineer`, so workflows created with older versions continue to load with the same inputs and output indices.
 
-## Prompt Controls node
+## Prompt Controls nodes
 
-**Cyberdelia Prompt Controls** provides four reusable outputs. The newer outputs were appended, so all existing output indices remain unchanged.
+**Cyberdelia Prompt Controls** is the original compact node. It retains exactly the same widgets and three outputs as before, keeping existing workflows and their layout unchanged.
+
+| Output | Type | Connect to Prompt Engineer |
+| --- | --- | --- |
+| `mode` | `BOOLEAN` | `mode` |
+| `prompt` | `STRING` | `text` |
+| `use_vision` | `BOOLEAN` | `use_vision` |
+
+Convert the corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect the desired controls.
+
+**Cyberdelia Prompt Controls — Presets** adds preset selection and a fourth output:
 
 | Output | Type | Connect to Prompt Engineer |
 | --- | --- | --- |
@@ -154,7 +164,7 @@ The internal ID remains `CyberdeliaZEngineer`, so workflows created with older v
 
 The frontend preset selector follows `use_vision` automatically: normal-text mode lists system presets, while Vision mode lists Vision presets. Selecting one copies its complete text into the visible `active_system_prompt` field, which is stored in the workflow. Connect that output directly to the matching `active_system_prompt` socket on either Prompt Engineer node.
 
-When the connected value is non-empty, it overrides the Prompt Engineer node's local `system_prompt` or `vision_system_prompt`, depending on `use_vision`. Leave it disconnected or empty to keep using the local fields. Convert the other corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect the desired controls.
+When the connected value is non-empty, it overrides the Prompt Engineer node's local `system_prompt` or `vision_system_prompt`, depending on `use_vision`. Leave it disconnected or empty to keep using the local fields. Convert the other corresponding widgets to inputs using ComfyUI's **Convert Widget to Input** action, then connect them as above.
 
 ## Model selection
 

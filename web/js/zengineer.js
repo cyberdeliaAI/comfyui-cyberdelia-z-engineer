@@ -17,7 +17,7 @@ const REFRESH_PRESETS = "↻ Refresh presets";
 const REFRESH_VISION_PRESETS = "↻ Refresh vision presets";
 const REFRESH_MODELS = "↻ Refresh models";
 const DANBOORU_NODE = "CyberdeliaDanbooruPrompt";
-const CONTROL_NODE = "CyberdeliaZEngineerInput";
+const CONTROL_NODE = "CyberdeliaPromptPresetControls";
 const REMOVED_DANBOORU_TEMPLATE_PRESETS = new Set([
     "custom",
     "tags_only",

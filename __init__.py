@@ -6,6 +6,7 @@ By Cyberdelia AI Lab — https://github.com/cyberdeliaAI
 
 from .z_engineer import CyberdeliaZEngineer
 from .z_engineer_input import CyberdeliaZEngineerInput
+from .prompt_preset_controls import CyberdeliaPromptPresetControls
 from .prompt_engineer_text import CyberdeliaPromptEngineerText
 from .danbooru_node import CyberdeliaDanbooruPrompt
 
@@ -27,6 +28,7 @@ NODE_CLASS_MAPPINGS = {
     # Keep both legacy IDs stable so existing workflows continue to load.
     "CyberdeliaZEngineer": CyberdeliaZEngineer,
     "CyberdeliaZEngineerInput": CyberdeliaZEngineerInput,
+    "CyberdeliaPromptPresetControls": CyberdeliaPromptPresetControls,
     "CyberdeliaPromptEngineerText": CyberdeliaPromptEngineerText,
     "CyberdeliaDanbooruPrompt": CyberdeliaDanbooruPrompt,
 }
@@ -34,6 +36,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaZEngineer": "Cyberdelia Prompt Engineer — Conditioning",
     "CyberdeliaZEngineerInput": "Cyberdelia Prompt Controls",
+    "CyberdeliaPromptPresetControls": "Cyberdelia Prompt Controls — Presets",
     "CyberdeliaPromptEngineerText": "Cyberdelia Prompt Engineer — Text",
     "CyberdeliaDanbooruPrompt": "Cyberdelia Danbooru Prompt",
 }
