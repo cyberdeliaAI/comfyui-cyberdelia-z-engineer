@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+from .image_loader import delete_input_image, list_input_images
 from .model_utils import discover_models
 from .preset_manager import (
     get_user_preset_dir,
@@ -70,5 +71,42 @@ def register_routes():
         except Exception as exc:
             logging.warning("Prompt Engineer Vision preset discovery failed: %s", exc)
             return web.json_response({"error": str(exc), "presets": []}, status=500)
+
+    @routes.get("/cyberdelia/z-engineer/input-images")
+    async def zengineer_input_images(_request):
+        try:
+            import folder_paths
+
+            images = await asyncio.to_thread(
+                list_input_images,
+                folder_paths.get_input_directory(),
+            )
+            return web.json_response({"images": images})
+        except Exception as exc:
+            logging.warning("Prompt Engineer input-image discovery failed: %s", exc)
+            return web.json_response({"error": str(exc), "images": []}, status=500)
+
+    @routes.post("/cyberdelia/z-engineer/input-images/delete")
+    async def zengineer_delete_input_image(request):
+        try:
+            import folder_paths
+
+            payload = await request.json()
+            filename = payload.get("filename", "") if isinstance(payload, dict) else ""
+            deleted = await asyncio.to_thread(
+                delete_input_image,
+                folder_paths.get_input_directory(),
+                filename,
+            )
+            images = await asyncio.to_thread(
+                list_input_images,
+                folder_paths.get_input_directory(),
+            )
+            return web.json_response({"deleted": deleted, "images": images})
+        except FileNotFoundError as exc:
+            return web.json_response({"error": str(exc)}, status=404)
+        except (OSError, ValueError) as exc:
+            logging.warning("Prompt Engineer input-image deletion rejected: %s", exc)
+            return web.json_response({"error": str(exc)}, status=400)
 
     _ROUTES_REGISTERED = True

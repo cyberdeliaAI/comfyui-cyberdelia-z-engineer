@@ -9,6 +9,7 @@ from .z_engineer_input import CyberdeliaZEngineerInput
 from .prompt_preset_controls import CyberdeliaPromptPresetControls
 from .prompt_engineer_text import CyberdeliaPromptEngineerText
 from .danbooru_node import CyberdeliaDanbooruPrompt
+from .image_loader import CyberdeliaVisionImageLoader
 
 WEB_DIRECTORY = "./web"
 
@@ -31,6 +32,7 @@ NODE_CLASS_MAPPINGS = {
     "CyberdeliaPromptPresetControls": CyberdeliaPromptPresetControls,
     "CyberdeliaPromptEngineerText": CyberdeliaPromptEngineerText,
     "CyberdeliaDanbooruPrompt": CyberdeliaDanbooruPrompt,
+    "CyberdeliaVisionImageLoader": CyberdeliaVisionImageLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -39,6 +41,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaPromptPresetControls": "Cyberdelia Prompt Controls — Presets",
     "CyberdeliaPromptEngineerText": "Cyberdelia Prompt Engineer — Text",
     "CyberdeliaDanbooruPrompt": "Cyberdelia Danbooru Prompt",
+    "CyberdeliaVisionImageLoader": "Cyberdelia Vision Image Loader",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

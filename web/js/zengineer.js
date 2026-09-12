@@ -18,6 +18,7 @@ const REFRESH_VISION_PRESETS = "↻ Refresh vision presets";
 const REFRESH_MODELS = "↻ Refresh models";
 const DANBOORU_NODE = "CyberdeliaDanbooruPrompt";
 const CONTROL_NODE = "CyberdeliaPromptPresetControls";
+const VISION_IMAGE_LOADER = "CyberdeliaVisionImageLoader";
 const REMOVED_DANBOORU_TEMPLATE_PRESETS = new Set([
     "custom",
     "tags_only",
@@ -55,6 +56,99 @@ const PROMPT_PRESET_CONFIGS = [
 
 function getWidget(node, name) {
     return node.widgets?.find((widget) => widget.name === name) ?? null;
+}
+
+
+function normalizedInputImage(value) {
+    return String(value ?? "").replace(/\s+\[input\]$/i, "").trim();
+}
+
+
+function applyInputImageList(node, images) {
+    const imageWidget = getWidget(node, "image");
+    if (!imageWidget) {
+        return;
+    }
+    const values = Array.isArray(images) ? images : [];
+    const current = normalizedInputImage(imageWidget.value);
+    setComboValues(imageWidget, values);
+    const nextValue = values.includes(current) ? current : (values[0] ?? "");
+    const selectionChanged = nextValue !== current;
+    setWidgetValue(imageWidget, nextValue);
+    if (selectionChanged) {
+        node.imgs = null;
+        node.imageIndex = null;
+    }
+    node.setDirtyCanvas?.(true, true);
+}
+
+
+async function refreshInputImages(node) {
+    try {
+        const response = await api.fetchApi("/cyberdelia/z-engineer/input-images");
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        applyInputImageList(node, payload.images);
+    } catch (error) {
+        console.warn("[Vision Image Loader] Could not refresh images", error);
+        window.alert(`Could not refresh ComfyUI input images: ${error.message}`);
+    }
+}
+
+
+async function deleteSelectedInputImage(node) {
+    const imageWidget = getWidget(node, "image");
+    const filename = normalizedInputImage(imageWidget?.value);
+    if (!filename) {
+        window.alert("Select an input image to delete.");
+        return;
+    }
+    const confirmed = window.confirm(
+        `Permanently delete "${filename}" from the ComfyUI input folder?`
+    );
+    if (!confirmed) {
+        return;
+    }
+    try {
+        const response = await api.fetchApi(
+            "/cyberdelia/z-engineer/input-images/delete",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filename }),
+            }
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        applyInputImageList(node, payload.images);
+    } catch (error) {
+        console.warn("[Vision Image Loader] Could not delete image", error);
+        window.alert(`Could not delete "${filename}": ${error.message}`);
+    }
+}
+
+
+function setupVisionImageLoader(node) {
+    if (node.__zEngineerImageLoaderReady) {
+        return;
+    }
+    node.__zEngineerImageLoaderReady = true;
+    markFrontendOnly(node.addWidget(
+        "button",
+        "↻ Refresh images",
+        null,
+        () => refreshInputImages(node)
+    ));
+    markFrontendOnly(node.addWidget(
+        "button",
+        "🗑 Delete selected image",
+        null,
+        () => deleteSelectedInputImage(node)
+    ));
 }
 
 
@@ -490,13 +584,21 @@ function setupNode(node, nodeName) {
 app.registerExtension({
     name: "cyberdelia.z_engineer.controls",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (!MODEL_NODE_NAMES.has(nodeData.name) && nodeData.name !== CONTROL_NODE) {
+        if (
+            !MODEL_NODE_NAMES.has(nodeData.name)
+            && nodeData.name !== CONTROL_NODE
+            && nodeData.name !== VISION_IMAGE_LOADER
+        ) {
             return;
         }
 
         const previousOnNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = previousOnNodeCreated?.apply(this, arguments);
+            if (nodeData.name === VISION_IMAGE_LOADER) {
+                setupVisionImageLoader(this);
+                return result;
+            }
             setupNode(this, nodeData.name);
             return result;
         };
@@ -507,6 +609,10 @@ app.registerExtension({
                 ? migrateRemovedDanbooruTemplatePreset(info)
                 : info;
             const result = previousConfigure?.call(this, resolvedInfo, ...rest);
+            if (nodeData.name === VISION_IMAGE_LOADER) {
+                setupVisionImageLoader(this);
+                return result;
+            }
             setupNode(this, nodeData.name);
             return result;
         };

@@ -36,7 +36,8 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
 - **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
 - **Two companion Controls nodes** — choose the original compact controls or preset-aware controls
-- **Image-to-prompt vision input** — connect ComfyUI's Load Image output to describe an image with a vision model
+- **Image-to-prompt vision input** — use ComfyUI's Load Image or the dedicated Vision Image Loader to describe an image with a vision model
+- **Vision Image Loader** — upload, preview, refresh, safely delete the selected input image, and optionally downscale it without cropping
 - **Automatic LM Studio model discovery** — loaded LLMs are marked in a model selector
 - **Safe `auto` model selection** — only chooses when one model is unambiguous
 - **Separate system and Vision presets** — bundled defaults plus user-authored `.txt` presets
@@ -119,7 +120,7 @@ Strict validation can recover a known sub-tag while removing an unknown modifier
 ## Text node — no CLIP
 
 1. Add **Cyberdelia Prompt Engineer — Text** from `Cyberdelia/Prompt`.
-2. Enter a seed prompt, or connect **Load Image** and enable Vision.
+2. Enter a seed prompt, or connect **Load Image** or **Cyberdelia Vision Image Loader** and enable Vision.
 3. Choose a system-prompt preset or edit the visible prompt instructions.
 4. Set the API URL and select a model.
 5. Connect `prompt` to Krea2, another text encoder, a preview node, or an image saver.
@@ -127,7 +128,7 @@ Strict validation can recover a known sub-tag while removing an unknown modifier
 For a Krea2 workflow, the intended separation is:
 
 ```text
-Load Image (optional) → Prompt Engineer — Text → Krea2 encoder → Krea2 conditioning
+Vision Image Loader (optional) → Prompt Engineer — Text → Krea2 encoder → Krea2 conditioning
 ```
 
 Krea2's model-specific hidden-state conditioning remains the responsibility of its encoder; Prompt Engineer supplies the reusable text.
@@ -182,14 +183,27 @@ The node does not call LM Studio's model-management endpoints and never unloads 
 
 ## Image to prompt
 
-The optional `image` input accepts the `IMAGE` output from ComfyUI's **Load Image** node:
+The optional `image` input accepts the `IMAGE` output from ComfyUI's standard **Load Image** node or the included **Cyberdelia Vision Image Loader**:
 
-1. Add **Load Image** and select an image.
+1. Add either image-loader node and select or upload an image.
 2. Connect its `IMAGE` output to Prompt Engineer's `image` input.
 3. Enable `use_vision`.
 4. Choose a Vision preset or enter image-specific instructions in `vision_system_prompt`.
 5. Select a model marked `[vision]`, or use `auto`.
 6. Enable **engineered (LLM)** and queue the workflow.
+
+### Vision Image Loader
+
+**Cyberdelia Vision Image Loader** is a compact alternative intended for Prompt Engineer workflows. It provides:
+
+- the normal ComfyUI image selector and upload control;
+- **Refresh images** to reload the current contents of the ComfyUI input folder;
+- **Delete selected image**, protected by a confirmation dialog;
+- `vision_size` choices of 512, 768, 1024, or 1536 pixels on the longest edge, plus `original`;
+- proportional downscaling without cropping or upscaling;
+- an optional `filename` output for previews, notes, or metadata.
+
+The default `1536 max (recommended)` matches Prompt Engineer's internal Vision limit. Smaller values reduce the image payload and memory use but may remove fine detail. The deletion button removes only the explicitly selected file from ComfyUI's input directory; it cannot delete output files, temporary files, arbitrary paths, or the complete image list.
 
 | Main `mode` | `use_vision` | Behavior |
 | --- | --- | --- |
