@@ -2,7 +2,11 @@ import time
 
 import requests
 
-from .model_utils import chat_completions_endpoint, resolve_model_name
+from .model_utils import (
+    chat_completions_endpoint,
+    raise_for_status_without_redirect,
+    resolve_model_name,
+)
 from .prompt_utils import (
     build_preservation_instruction,
     enforce_constraints,
@@ -269,8 +273,9 @@ class CyberdeliaZEngineer:
                     headers=headers,
                     json=payload,
                     timeout=timeout,
+                    allow_redirects=False,
                 )
-                response.raise_for_status()
+                raise_for_status_without_redirect(response)
                 return self._extract_message_content(response.json())
             except Exception as exc:
                 if attempt + 1 >= attempts or not self._is_retryable_error(exc):

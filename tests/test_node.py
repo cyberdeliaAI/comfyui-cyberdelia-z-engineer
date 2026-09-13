@@ -104,10 +104,20 @@ class NodeTests(unittest.TestCase):
             )
 
         messages = post.call_args.kwargs["json"]["messages"]
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
         self.assertEqual(
             messages[0]["content"],
             "Instructions selected in Prompt Controls.",
         )
+
+    def test_remote_api_url_is_rejected_before_request(self):
+        with patch.object(node_module.requests, "post") as post:
+            with self.assertRaisesRegex(RuntimeError, "API URL is not allowed"):
+                self.node.generate_prompt(
+                    **{**self.base_args, "api_url": "http://169.254.169.254"},
+                    retries=0,
+                )
+        post.assert_not_called()
 
     def test_active_system_prompt_overrides_vision_system_prompt(self):
         with (

@@ -289,7 +289,7 @@ Fallback and passthrough text are never cleaned or modified.
 | `mode` | Enhanced LLM mode or raw passthrough |
 | `text` | Input concept or seed prompt |
 | `system_prompt` | Visible instructions sent to the LLM |
-| `api_url` | OpenAI-compatible base URL, normally `http://localhost:1234/v1` |
+| `api_url` | Allowlisted OpenAI-compatible base URL; `http://localhost:1234/v1` by default |
 | `model` | Manual model ID or `auto` |
 | `seed` | Sampling seed sent to the API |
 | `temperature` | Sampling temperature sent to the API |
@@ -305,6 +305,23 @@ Fallback and passthrough text are never cleaned or modified.
 | `image` | Optional ComfyUI image sent to a vision model for image-to-prompt generation |
 
 `top_p`, `top_k`, and `min_p` are deliberately not sent; configure them in LM Studio or your chosen server.
+
+### LLM endpoint security
+
+Prompt Engineer accepts `http://localhost:1234/v1` by default, including the
+equivalent `127.0.0.1` and IPv6 loopback forms. Imported workflows cannot make
+the node contact arbitrary network services, and LLM HTTP redirects are not
+followed.
+
+To use another trusted local or remote OpenAI-compatible endpoint, the machine
+owner must allow its complete base URL before starting ComfyUI:
+
+```bash
+export CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS="http://127.0.0.1:11434/v1"
+```
+
+Multiple URLs can be separated with commas. The URL entered in the node must
+normalize to one of these complete allowlisted base URLs.
 
 ## Outputs
 
