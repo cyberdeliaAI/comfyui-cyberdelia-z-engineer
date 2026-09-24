@@ -6,8 +6,10 @@ const PRESET_NODE_NAMES = new Set([
     "CyberdeliaZEngineer",
     "CyberdeliaPromptEngineerText",
 ]);
+const CHAIN_NODE = "CyberdeliaPromptEngineerChain";
 const MODEL_NODE_NAMES = new Set([
     ...PRESET_NODE_NAMES,
+    CHAIN_NODE,
     "CyberdeliaDanbooruPrompt",
 ]);
 const CUSTOM_PRESET = "Custom";
@@ -52,6 +54,18 @@ const PROMPT_PRESET_CONFIGS = [
         logName: "Vision",
     },
 ];
+const CHAIN_PRESET_CONFIGS = Array.from({ length: 5 }, (_, index) => ({
+    selectorName: `system_prompt_${index + 1}_preset_selector`,
+    promptName: `system_prompt_${index + 1}`,
+    presetsProperty: "__zEngineerChainPresets",
+    applyingProperty: `__zEngineerApplyingChainPreset${index + 1}`,
+    trackingProperty: `__zEngineerChainPresetTracking${index + 1}`,
+    endpoint: "/cyberdelia/z-engineer/presets",
+    refreshLabel: REFRESH_PRESETS,
+    unavailableLabel: "[presets unavailable]",
+    logName: `chain stage ${index + 1}`,
+    refreshGroup: "chain",
+}));
 
 
 function getWidget(node, name) {
@@ -257,6 +271,48 @@ async function refreshPresets(node, config) {
 }
 
 
+async function refreshChainPresets(node) {
+    try {
+        const response = await api.fetchApi("/cyberdelia/z-engineer/presets");
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        node.__zEngineerChainPresets = new Map(
+            (payload.presets ?? []).map((preset) => [preset.name, preset.prompt])
+        );
+        const values = [
+            CUSTOM_PRESET,
+            ...node.__zEngineerChainPresets.keys(),
+            REFRESH_PRESETS,
+        ];
+        for (const config of CHAIN_PRESET_CONFIGS) {
+            const selector = getWidget(node, config.selectorName);
+            if (!selector) {
+                continue;
+            }
+            setComboValues(selector, values);
+            syncPresetSelector(node, selector, config);
+        }
+        node.setDirtyCanvas?.(true, true);
+    } catch (error) {
+        console.warn("[Prompt Chain] Could not refresh presets", error);
+        for (const config of CHAIN_PRESET_CONFIGS) {
+            const selector = getWidget(node, config.selectorName);
+            if (!selector) {
+                continue;
+            }
+            setComboValues(selector, [
+                CUSTOM_PRESET,
+                config.unavailableLabel,
+                REFRESH_PRESETS,
+            ]);
+            selector.value = CUSTOM_PRESET;
+        }
+    }
+}
+
+
 function ensurePresetSelector(node, config) {
     let selector = getWidget(node, config.selectorName);
     if (selector) {
@@ -269,7 +325,11 @@ function ensurePresetSelector(node, config) {
         CUSTOM_PRESET,
         async (value) => {
             if (value === config.refreshLabel) {
-                await refreshPresets(node, config);
+                if (config.refreshGroup === "chain") {
+                    await refreshChainPresets(node);
+                } else {
+                    await refreshPresets(node, config);
+                }
                 return;
             }
             const presets = node[config.presetsProperty];
@@ -570,7 +630,12 @@ function setupNode(node, nodeName) {
         refreshControlPresets(node);
         return;
     }
-    if (PRESET_NODE_NAMES.has(nodeName)) {
+    if (nodeName === CHAIN_NODE) {
+        for (const config of CHAIN_PRESET_CONFIGS) {
+            ensurePresetSelector(node, config);
+        }
+        refreshChainPresets(node);
+    } else if (PRESET_NODE_NAMES.has(nodeName)) {
         for (const config of PROMPT_PRESET_CONFIGS) {
             ensurePresetSelector(node, config);
             refreshPresets(node, config);

@@ -8,6 +8,7 @@ from .z_engineer import CyberdeliaZEngineer
 from .z_engineer_input import CyberdeliaZEngineerInput
 from .prompt_preset_controls import CyberdeliaPromptPresetControls
 from .prompt_engineer_text import CyberdeliaPromptEngineerText
+from .prompt_chain import CyberdeliaPromptEngineerChain
 from .danbooru_node import CyberdeliaDanbooruPrompt
 from .image_loader import CyberdeliaVisionImageLoader
 
@@ -31,6 +32,7 @@ NODE_CLASS_MAPPINGS = {
     "CyberdeliaZEngineerInput": CyberdeliaZEngineerInput,
     "CyberdeliaPromptPresetControls": CyberdeliaPromptPresetControls,
     "CyberdeliaPromptEngineerText": CyberdeliaPromptEngineerText,
+    "CyberdeliaPromptEngineerChain": CyberdeliaPromptEngineerChain,
     "CyberdeliaDanbooruPrompt": CyberdeliaDanbooruPrompt,
     "CyberdeliaVisionImageLoader": CyberdeliaVisionImageLoader,
 }
@@ -40,6 +42,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaZEngineerInput": "Cyberdelia Prompt Controls",
     "CyberdeliaPromptPresetControls": "Cyberdelia Prompt Controls — Presets",
     "CyberdeliaPromptEngineerText": "Cyberdelia Prompt Engineer — Text",
+    "CyberdeliaPromptEngineerChain": "Cyberdelia Prompt Engineer — Chain",
     "CyberdeliaDanbooruPrompt": "Cyberdelia Danbooru Prompt",
     "CyberdeliaVisionImageLoader": "Cyberdelia Vision Image Loader",
 }

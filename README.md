@@ -19,12 +19,13 @@ By **Cyberdelia AI Lab** · [github.com/cyberdeliaAI](https://github.com/cyberde
 
 ## What it does
 
-Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, to LM Studio, Ollama, or another OpenAI-compatible server. Two node variants share the same generation pipeline:
+Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, to LM Studio, Ollama, or another OpenAI-compatible server. Its prompt nodes share the same generation pipeline:
 
 | Node | CLIP required | Outputs | Best for |
 | --- | --- | --- | --- |
 | **Prompt Engineer — Text** | No | Prompt `STRING` | Krea2, Flux, external encoders, metadata, image-to-prompt |
 | **Prompt Engineer — Conditioning** | Yes | Positive, negative, prompt | Workflows that use normal CLIP conditioning directly |
+| **Prompt Engineer — Chain** | No | Final prompt plus five stage previews | Applying multiple system prompts sequentially |
 | **Danbooru Prompt** | No | Prompt, tags, dropped tags | Anime checkpoints trained on booru-style captions |
 
 Existing workflows can bypass the LLM with the built-in passthrough toggle.
@@ -34,6 +35,7 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 ## Features
 
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
+- **Sequential Prompt Chain** — process one prompt through one to five system prompts and inspect every intermediate result
 - **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
 - **Two companion Controls nodes** — choose the original compact controls or preset-aware controls
 - **Image-to-prompt vision input** — use ComfyUI's Load Image or the dedicated Vision Image Loader to describe an image with a vision model
@@ -132,6 +134,34 @@ Vision Image Loader (optional) → Prompt Engineer — Text → Krea2 encoder �
 ```
 
 Krea2's model-specific hidden-state conditioning remains the responsibility of its encoder; Prompt Engineer supplies the reusable text.
+
+## Prompt Chain node
+
+**Cyberdelia Prompt Engineer — Chain** applies between one and five system
+prompts in sequence. Stage 1 receives the original prompt, stage 2 receives the
+output of stage 1, and so on. `stage_count` determines how many stages are used;
+an empty system-prompt field skips that stage without changing the text.
+
+Each stage has its own normal-prompt preset selector. Selecting a preset copies
+the complete instructions into that stage's visible `system_prompt` field, so
+the workflow remains reproducible if the preset file later changes.
+
+`handoff_mode` controls the context sent to stages 2–5:
+
+| Mode | Next stage receives |
+| --- | --- |
+| `previous output only` | Only the result of the preceding stage |
+| `original + previous output` | The untouched seed prompt plus the preceding result, clearly labelled |
+
+The first output is always `final_prompt`. The five additional outputs expose
+the result after each stage for debugging or alternate workflow branches.
+Inactive stage outputs are empty. With `fallback_input`, a failed stage keeps
+the last successful result and the chain continues; `stop` aborts immediately,
+and `empty` replaces the failed stage with an empty string.
+
+For image-to-prompt chaining, run the image through **Prompt Engineer — Text**
+in Vision mode first and connect its prompt output to the Chain node. This keeps
+image analysis separate from the subsequent text-only refinements.
 
 ## Conditioning node
 
@@ -338,6 +368,13 @@ normalize to one of these complete allowlisted base URLs.
 | `positive` | `CONDITIONING` | CLIP-encoded final prompt |
 | `negative` | `CONDITIONING` | CLIP-encoded empty string |
 | `prompt` | `STRING` | Exact text used for positive conditioning |
+
+**Prompt Engineer — Chain**
+
+| Output | Type | Description |
+| --- | --- | --- |
+| `final_prompt` | `STRING` | Result of the last active stage |
+| `stage_1` … `stage_5` | `STRING` | Intermediate result after each active stage |
 
 For guaranteed metadata capture, connect `prompt` directly to the prompt-text input of your image saver. Compatible metadata extensions may also receive the Conditioning node's resolved runtime text through its metadata cache integration.
 
