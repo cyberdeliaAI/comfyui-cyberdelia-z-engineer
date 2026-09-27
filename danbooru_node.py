@@ -142,7 +142,7 @@ class CyberdeliaDanbooruPrompt(CyberdeliaZEngineer):
                 "max_tokens": ("INT", {
                     "default": 500,
                     "min": 50,
-                    "max": 4096,
+                    "max": 262144,
                     "step": 10,
                 }),
                 "timeout": ("INT", {

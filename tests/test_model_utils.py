@@ -62,6 +62,24 @@ class ModelUtilsTests(unittest.TestCase):
                 "https://llm.example.test:443/openai/v1",
             )
 
+    def test_api_key_header_is_read_from_dedicated_environment_variable(self):
+        with patch.dict(
+            model_utils.os.environ,
+            {model_utils.API_KEY_ENV: "secret-token"},
+            clear=False,
+        ):
+            self.assertEqual(
+                model_utils.openai_request_headers(include_json=True),
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer secret-token",
+                },
+            )
+
+    def test_api_key_header_is_omitted_when_not_configured(self):
+        with patch.dict(model_utils.os.environ, {}, clear=True):
+            self.assertEqual(model_utils.openai_request_headers(), {})
+
     @patch("model_utils.requests.get")
     def test_native_discovery_filters_embeddings_and_sorts_loaded_first(self, get):
         response = Mock()
@@ -92,8 +110,33 @@ class ModelUtilsTests(unittest.TestCase):
         self.assertFalse(models[1]["vision"])
         get.assert_called_once_with(
             "http://localhost:1234/api/v1/models",
+            headers={},
             timeout=2.0,
             allow_redirects=False,
+        )
+
+    @patch("model_utils.requests.get")
+    def test_model_discovery_sends_bearer_authentication(self, get):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "models": [
+                {"key": "secured-model", "type": "llm", "loaded_instances": []}
+            ]
+        }
+        get.return_value = response
+
+        with patch.dict(
+            model_utils.os.environ,
+            {model_utils.API_KEY_ENV: "secret-token"},
+            clear=False,
+        ):
+            models = model_utils.discover_models("http://localhost:1234/v1")
+
+        self.assertEqual(models[0]["id"], "secured-model")
+        self.assertEqual(
+            get.call_args.kwargs["headers"],
+            {"Authorization": "Bearer secret-token"},
         )
 
     @patch("model_utils.requests.get")

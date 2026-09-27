@@ -96,6 +96,7 @@ class DanbooruNodeTests(unittest.TestCase):
             inputs["prompt"][1]["placeholder"],
             "Enter your prompt here...",
         )
+        self.assertEqual(inputs["max_tokens"][1]["max"], 262144)
 
     def test_generates_validated_space_tags(self):
         with patch.object(

@@ -61,6 +61,7 @@ class PromptChainTests(unittest.TestCase):
         required = CyberdeliaPromptEngineerChain.INPUT_TYPES()["required"]
         for index in range(1, 6):
             self.assertIn(f"system_prompt_{index}", required)
+        self.assertEqual(required["max_tokens"][1]["max"], 262144)
         self.assertEqual(
             CyberdeliaPromptEngineerChain.RETURN_NAMES,
             ("final_prompt", "stage_1", "stage_2", "stage_3", "stage_4", "stage_5"),

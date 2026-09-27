@@ -10,6 +10,7 @@ import requests
 
 MODEL_CACHE_TTL_SECONDS = 20.0
 ALLOWED_API_URLS_ENV = "CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS"
+API_KEY_ENV = "CYBERDELIA_Z_ENGINEER_API_KEY"
 DEFAULT_ALLOWED_API_URLS = (
     "http://localhost:1234/v1",
     "http://127.0.0.1:1234/v1",
@@ -21,6 +22,20 @@ _MODEL_CACHE_LOCK = threading.Lock()
 
 class ModelDiscoveryError(RuntimeError):
     """Raised when automatic model selection cannot make a safe choice."""
+
+
+def openai_request_headers(include_json=False):
+    """Build OpenAI-compatible headers without exposing secrets to workflows.
+
+    The API key is read only from the machine owner's environment. Keeping it
+    out of node inputs prevents it from being serialized into workflows,
+    execution history, or generated-image metadata.
+    """
+    headers = {"Content-Type": "application/json"} if include_json else {}
+    api_key = os.environ.get(API_KEY_ENV, "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
 
 
 def _canonicalize_openai_base_url(api_url):
@@ -118,7 +133,12 @@ def lmstudio_server_root(api_url):
 
 def _native_models(api_url, timeout):
     endpoint = f"{lmstudio_server_root(api_url)}/api/v1/models"
-    response = requests.get(endpoint, timeout=timeout, allow_redirects=False)
+    response = requests.get(
+        endpoint,
+        headers=openai_request_headers(),
+        timeout=timeout,
+        allow_redirects=False,
+    )
     raise_for_status_without_redirect(response)
     data = response.json()
     models = []
@@ -157,7 +177,12 @@ def _native_models(api_url, timeout):
 
 def _openai_models(api_url, timeout):
     endpoint = f"{normalize_openai_base_url(api_url)}/models"
-    response = requests.get(endpoint, timeout=timeout, allow_redirects=False)
+    response = requests.get(
+        endpoint,
+        headers=openai_request_headers(),
+        timeout=timeout,
+        allow_redirects=False,
+    )
     raise_for_status_without_redirect(response)
     data = response.json()
     models = []

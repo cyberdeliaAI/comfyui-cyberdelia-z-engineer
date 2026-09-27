@@ -4,6 +4,7 @@ import requests
 
 from .model_utils import (
     chat_completions_endpoint,
+    openai_request_headers,
     raise_for_status_without_redirect,
     resolve_model_name,
 )
@@ -77,7 +78,7 @@ class CyberdeliaZEngineer:
                 "max_tokens": ("INT", {
                     "default": 600,
                     "min": 50,
-                    "max": 4096,
+                    "max": 262144,
                     "step": 1
                 }),
                 "timeout": ("INT", {
@@ -243,7 +244,7 @@ class CyberdeliaZEngineer:
                   image_data_url=None, log_label="Prompt Engineer"):
         """Send a chat completion request to the OpenAI-compatible endpoint."""
         endpoint = chat_completions_endpoint(api_url)
-        headers = {"Content-Type": "application/json"}
+        headers = openai_request_headers(include_json=True)
         user_content = (
             build_vision_user_content(text, image_data_url)
             if image_data_url
@@ -318,6 +319,13 @@ class CyberdeliaZEngineer:
             )
         if isinstance(exc, requests.exceptions.HTTPError):
             status = exc.response.status_code if exc.response is not None else "?"
+            if status in {401, 403}:
+                return (
+                    f"{feature_name} was not authorized by the LLM server "
+                    f"(HTTP {status} from {api_url}). Set the "
+                    "CYBERDELIA_Z_ENGINEER_API_KEY environment variable before "
+                    "starting ComfyUI."
+                )
             return (
                 f"{feature_name} could not use LLM model '{model}' "
                 f"(HTTP {status} from {api_url}). Verify that the model is loaded "

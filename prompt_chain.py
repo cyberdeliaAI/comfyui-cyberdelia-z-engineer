@@ -91,7 +91,7 @@ class CyberdeliaPromptEngineerChain(CyberdeliaZEngineer):
                 "max_tokens": ("INT", {
                     "default": 600,
                     "min": 50,
-                    "max": 4096,
+                    "max": 262144,
                     "step": 1,
                 }),
                 "timeout": ("INT", {

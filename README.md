@@ -49,6 +49,8 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 - **Output cleaning** — strips reasoning blocks, ChatML, Markdown fences, prompt labels, negative-prompt sections, and excess whitespace
 - **Configurable error handling** — fall back to input, stop the workflow, or return an empty result
 - **Targeted retries** — retries transient connection, timeout, HTTP 429, and HTTP 5xx failures
+- **Secure API-key authentication** — reads an optional Bearer token from the host environment without storing it in workflows
+- **Extended output limit** — `max_tokens` can be configured up to 262,144 when the selected model and server support it
 - **Metadata-friendly runtime output** — publishes the actually encoded text to compatible metadata extensions
 - **Danbooru Prompt node** — converts natural language into validated booru-style tags
 - **140k-tag local vocabulary** — resolves canonical tags, aliases, common word forms, and recoverable sub-phrases
@@ -323,7 +325,7 @@ Fallback and passthrough text are never cleaned or modified.
 | `model` | Manual model ID or `auto` |
 | `seed` | Sampling seed sent to the API |
 | `temperature` | Sampling temperature sent to the API |
-| `max_tokens` | Maximum output tokens sent to the API |
+| `max_tokens` | Maximum output tokens sent to the API; configurable up to 262,144, subject to the model and server limits |
 | `timeout` | Request timeout in seconds |
 | `keep_terms` | Exact terms that must survive generation |
 | `preserve_constraints` | Enable conservative seed-constraint preservation |
@@ -352,6 +354,28 @@ export CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS="http://127.0.0.1:11434/v1"
 
 Multiple URLs can be separated with commas. The URL entered in the node must
 normalize to one of these complete allowlisted base URLs.
+
+For an endpoint that requires OpenAI-compatible Bearer authentication, set the
+API key before starting ComfyUI. The key is deliberately not a node widget, so
+it cannot be saved in a workflow, execution history, or image metadata:
+
+**Windows batch file:**
+
+```bat
+set "CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS=http://192.168.178.92:8000/v1"
+set "CYBERDELIA_Z_ENGINEER_API_KEY=your-api-key"
+```
+
+**macOS or Linux:**
+
+```bash
+export CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS="http://192.168.178.92:8000/v1"
+export CYBERDELIA_Z_ENGINEER_API_KEY="your-api-key"
+```
+
+The optional key is sent as `Authorization: Bearer ...` for both model
+discovery and chat-completion requests. Restart ComfyUI after changing either
+environment variable.
 
 ## Outputs
 

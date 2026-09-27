@@ -110,6 +110,33 @@ class NodeTests(unittest.TestCase):
             "Instructions selected in Prompt Controls.",
         )
 
+    def test_chat_completion_sends_environment_api_key(self):
+        with (
+            patch.object(
+                node_module.requests,
+                "post",
+                return_value=response_with("A secured result."),
+            ) as post,
+            patch.dict(
+                sys.modules[f"{PACKAGE_NAME}.model_utils"].os.environ,
+                {"CYBERDELIA_Z_ENGINEER_API_KEY": "secret-token"},
+                clear=False,
+            ),
+        ):
+            self.node.generate_prompt(**self.base_args)
+
+        self.assertEqual(
+            post.call_args.kwargs["headers"],
+            {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer secret-token",
+            },
+        )
+
+    def test_max_tokens_supports_256k(self):
+        widget = CyberdeliaZEngineer.INPUT_TYPES()["required"]["max_tokens"]
+        self.assertEqual(widget[1]["max"], 262144)
+
     def test_remote_api_url_is_rejected_before_request(self):
         with patch.object(node_module.requests, "post") as post:
             with self.assertRaisesRegex(RuntimeError, "API URL is not allowed"):
