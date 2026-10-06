@@ -1,0 +1,325 @@
+{
+  "id": "1ca4c837-8f35-4e4a-b118-9797ab0f1d24",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CyberdeliaZEngineerInput",
+      "pos": [
+        -700,
+        10
+      ],
+      "size": [
+        330,
+        300
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "mode",
+          "type": "BOOLEAN",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            2
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "use_vision",
+          "type": "BOOLEAN",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CyberdeliaZEngineerInput"
+      },
+      "widgets_values": [
+        false,
+        "A portrait in soft window light, natural skin texture, neutral background.",
+        false
+      ],
+      "title": "Gewone prompt"
+    },
+    {
+      "id": 2,
+      "type": "WildcardLoRAPromptsV3",
+      "pos": [
+        -280,
+        10
+      ],
+      "size": [
+        450,
+        1200
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "fallback_prompt",
+          "type": "STRING",
+          "link": 2,
+          "widget": {
+            "name": "fallback_prompt"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompts",
+          "type": "STRING",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "preview",
+          "type": "STRING",
+          "links": [
+            4
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "prompt_count",
+          "type": "INT",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "WildcardLoRAPromptsV3"
+      },
+      "widgets_values": [
+        "A studio portrait of an adult {type} woman with {hair} hair,\nneutral background, soft lighting, natural skin texture.\n\nAn adult {type} woman with {hair} hair,\nwalking through a city street, daylight, full body photograph.\n\nAn adult {type} woman with {hair} hair,\nwearing a sweater, sitting in a cafe, candid photograph.\n\nA side profile portrait of an adult {type} woman with {hair} hair,\nsoft window light, plain background.\n\nAn adult {type} woman with {hair} hair,\nstanding in a garden, golden hour, medium shot.\n",
+        "hair=blonde\ntype=mature",
+        "",
+        "blank line",
+        "",
+        "whole words",
+        false,
+        "",
+        "random prompt",
+        0,
+        "randomize",
+        true,
+        ""
+      ],
+      "title": "Wildcards aan / uit"
+    },
+    {
+      "id": 3,
+      "type": "CyberdeliaPromptEngineerText",
+      "pos": [
+        300,
+        10
+      ],
+      "size": [
+        440,
+        850
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mode",
+          "type": "BOOLEAN",
+          "link": 1,
+          "widget": {
+            "name": "mode"
+          }
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 3,
+          "widget": {
+            "name": "text"
+          }
+        },
+        {
+          "name": "active_system_prompt",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CyberdeliaPromptEngineerText"
+      },
+      "widgets_values": [
+        false,
+        "",
+        "Return only the image prompt.",
+        "http://localhost:1234/v1",
+        "auto",
+        0,
+        "fixed",
+        0.7,
+        600,
+        120,
+        "",
+        false,
+        true,
+        "stop",
+        1,
+        false,
+        "Analyze the attached image and return only one detailed image-generation prompt in English."
+      ],
+      "title": "Naar Krea2 text encoder"
+    },
+    {
+      "id": 4,
+      "type": "PreviewAny",
+      "pos": [
+        800,
+        10
+      ],
+      "size": [
+        380,
+        300
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "title": "Prompt voor de afbeelding"
+    },
+    {
+      "id": 5,
+      "type": "PreviewAny",
+      "pos": [
+        800,
+        370
+      ],
+      "size": [
+        380,
+        300
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "title": "Wildcard preview"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "BOOLEAN"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "STRING"
+    ],
+    [
+      4,
+      2,
+      1,
+      5,
+      0,
+      "STRING"
+    ],
+    [
+      5,
+      3,
+      0,
+      4,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        730,
+        50
+      ]
+    }
+  },
+  "version": 0.4
+}

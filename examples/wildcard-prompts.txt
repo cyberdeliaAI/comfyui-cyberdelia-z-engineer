@@ -1,0 +1,14 @@
+A studio portrait of an adult {type} woman with {hair} hair,
+neutral background, soft lighting, natural skin texture.
+
+An adult {type} woman with {hair} hair,
+walking through a city street, daylight, full body photograph.
+
+An adult {type} woman with {hair} hair,
+wearing a sweater, sitting in a cafe, candid photograph.
+
+A side profile portrait of an adult {type} woman with {hair} hair,
+soft window light, plain background.
+
+An adult {type} woman with {hair} hair,
+standing in a garden, golden hour, medium shot.

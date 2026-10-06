@@ -11,6 +11,7 @@ from .prompt_engineer_text import CyberdeliaPromptEngineerText
 from .prompt_chain import CyberdeliaPromptEngineerChain
 from .danbooru_node import CyberdeliaDanbooruPrompt
 from .image_loader import CyberdeliaVisionImageLoader
+from .wildcard_prompts import WildcardLoRAPrompts
 
 WEB_DIRECTORY = "./web"
 
@@ -35,6 +36,8 @@ NODE_CLASS_MAPPINGS = {
     "CyberdeliaPromptEngineerChain": CyberdeliaPromptEngineerChain,
     "CyberdeliaDanbooruPrompt": CyberdeliaDanbooruPrompt,
     "CyberdeliaVisionImageLoader": CyberdeliaVisionImageLoader,
+    # Preserve the current standalone wildcard ID when moving workflows here.
+    "WildcardLoRAPromptsV3": WildcardLoRAPrompts,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -45,6 +48,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CyberdeliaPromptEngineerChain": "Cyberdelia Prompt Engineer — Chain",
     "CyberdeliaDanbooruPrompt": "Cyberdelia Danbooru Prompt",
     "CyberdeliaVisionImageLoader": "Cyberdelia Vision Image Loader",
+    "WildcardLoRAPromptsV3": "Cyberdelia Wildcard Prompts",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

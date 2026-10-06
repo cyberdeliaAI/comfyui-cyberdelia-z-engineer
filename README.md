@@ -7,7 +7,7 @@
 [![Tests](https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer/actions/workflows/tests.yml/badge.svg)](https://github.com/cyberdeliaAI/comfyui-cyberdelia-z-engineer/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Model-independent text, vision, and Danbooru prompt engineering for ComfyUI. Generate a reusable prompt string, validated anime tags, or CLIP-encoded sampler-ready conditioning.
+Model-independent text, vision, wildcard, and Danbooru prompt engineering for ComfyUI. Generate a reusable prompt string, filled prompt templates, validated anime tags, or CLIP-encoded sampler-ready conditioning.
 
 The package and repository retain the legacy name `comfyui-cyberdelia-z-engineer` so existing installations and update paths remain compatible.
 
@@ -27,6 +27,7 @@ Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, t
 | **Prompt Engineer — Conditioning** | Yes | Positive, negative, prompt | Workflows that use normal CLIP conditioning directly |
 | **Prompt Engineer — Chain** | No | Final prompt plus five stage previews | Applying multiple system prompts sequentially |
 | **Danbooru Prompt** | No | Prompt, tags, dropped tags | Anime checkpoints trained on booru-style captions |
+| **Wildcard Prompts** | No | Prompts, preview, prompt count | LoRA testing with editable templates and one random prompt per run |
 
 Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
@@ -35,6 +36,8 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 ## Features
 
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
+- **Wildcard Prompts** — load a `.txt` or paste templates, fill editable tags, replace text, add a trigger prefix, and choose one random prompt per run
+- **Wildcard on/off switch** — keep the node connected and send one unchanged normal prompt when disabled
 - **Sequential Prompt Chain** — process one prompt through one to five system prompts and inspect every intermediate result
 - **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
 - **Two companion Controls nodes** — choose the original compact controls or preset-aware controls
@@ -60,7 +63,7 @@ The separate **Cyberdelia Danbooru Prompt** node converts a normal scene descrip
 ## Requirements
 
 - A recent ComfyUI version
-- A running OpenAI-compatible chat-completions endpoint
+- A running OpenAI-compatible chat-completions endpoint when using LLM generation
 - `requests`
 
 The Conditioning variant additionally requires a CLIP input with `clip.encode_from_tokens_scheduled`.
@@ -84,6 +87,42 @@ pip install -r comfyui-cyberdelia-z-engineer/requirements.txt
 ```
 
 Restart ComfyUI after installation or updating.
+
+## Wildcard Prompts for LoRA testing
+
+Add **Cyberdelia Wildcard Prompts** from `Cyberdelia/Prompt`. Paste prompt templates or click **Load .txt**. The `prompt_file` field can instead read a UTF-8 `.txt` file on the ComfyUI computer; relative paths start in `ComfyUI/input`. A non-empty path overrides pasted text. Loading a file with the button clears that path and stores its text in the workflow.
+
+Set `prompt_separator` to **blank line** for prompts that can span several lines, or **one per line** for one prompt on each non-empty line. Define editable tags in `extra_tags`, one `name=value` per line:
+
+```text
+hair=blonde
+type=mature
+trigger=my_lora_keyword
+```
+
+Use `{hair}`, `{type}`, or any other tag name in the templates. Empty or missing tags are removed, with surrounding spacing cleaned. For example, `A portrait of a {type} woman.` becomes `A portrait of a woman.` when `type` is empty or omitted.
+
+Optional controls:
+
+- `search_replace`: one `search=replacement` per line, such as `woman=male`. Rules run after filling tags. Whole-word matching and case-insensitive matching are the defaults; both can be changed.
+- `prefix`: text or a LoRA trigger to prepend, such as `{trigger}`. A blank prefix is ignored. The prefix is added after search/replace.
+- `mode`: **random prompt** sends one prompt per run. **all prompts** sends every prompt separately and therefore runs downstream generation for each prompt.
+- `prompt_seed`: selects the prompt independently of the image seed. Use **randomize** to draw again each run, or **fixed** to repeat a selection. A random draw can repeat a previous prompt.
+
+Connect **prompts** to the `text` input of Prompt Engineer — Text or Conditioning. For Krea2, use the Text variant and connect its `prompt` output to the model's text encoder. Use **preview** only for a text preview: in all-prompts mode it contains all selected prompts joined together.
+
+### Turn wildcards on or off without reconnecting
+
+- **`enabled` on**: send the filled wildcard prompt(s).
+- **`enabled` off**: send `fallback_prompt` exactly once, unchanged. Files, tags, replacements, prefix, separator, and selection mode are ignored, including during file-change checks.
+
+Enter your normal prompt in `fallback_prompt`. Alternatively, convert `fallback_prompt` to an input and connect the `prompt` output of **Cyberdelia Prompt Controls**. This lets you keep your normal prompt in the Controls node. Turning wildcards off with an empty fallback sends one empty prompt.
+
+The wildcard switch is independent of Prompt Engineer's LLM/passthrough switch. Leave Prompt Engineer in **passthrough (raw)** to test the selected prompt directly without an LLM. Enable its LLM mode when you want it to rewrite either the wildcard or normal prompt.
+
+An example with normal Prompt Controls, the wildcard switch, and the Text variant is included in [examples/wildcard-z-engineer.json](examples/wildcard-z-engineer.json). Example templates are in [examples/wildcard-prompts.txt](examples/wildcard-prompts.txt).
+
+When moving from the standalone `comfyui-wildcard-lora` package, remove that old package from `ComfyUI/custom_nodes` after installing this version, then restart ComfyUI and refresh the browser. The current wildcard node ID is preserved, so its existing workflows still load. Earlier legacy wildcard node IDs are not registered.
 
 ## Danbooru Prompt node
 
