@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from .image_loader import delete_input_image, list_input_images
-from .model_utils import discover_models
+from .model_utils import default_openai_base_url, discover_models
 from .preset_manager import (
     get_user_preset_dir,
     get_user_vision_preset_dir,
@@ -28,7 +28,7 @@ def register_routes():
 
     @routes.get("/cyberdelia/z-engineer/models")
     async def zengineer_models(request):
-        api_url = request.query.get("api_url", "http://localhost:1234/v1")
+        api_url = request.query.get("api_url", default_openai_base_url())
         force = request.query.get("force", "0").casefold() in {"1", "true", "yes"}
         try:
             models = await asyncio.to_thread(

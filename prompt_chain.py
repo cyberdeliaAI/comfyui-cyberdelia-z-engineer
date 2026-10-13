@@ -1,6 +1,6 @@
 """Sequential multi-prompt processing for Cyberdelia Prompt Engineer."""
 
-from .model_utils import resolve_model_name
+from .model_utils import default_openai_base_url, resolve_model_name
 from .z_engineer import CyberdeliaZEngineer
 
 
@@ -71,7 +71,7 @@ class CyberdeliaPromptEngineerChain(CyberdeliaZEngineer):
                 }),
                 "api_url": ("STRING", {
                     "multiline": False,
-                    "default": "http://localhost:1234/v1",
+                    "default": default_openai_base_url(),
                 }),
                 "model": ("STRING", {
                     "multiline": False,

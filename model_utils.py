@@ -11,6 +11,8 @@ import requests
 MODEL_CACHE_TTL_SECONDS = 20.0
 ALLOWED_API_URLS_ENV = "CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS"
 API_KEY_ENV = "CYBERDELIA_Z_ENGINEER_API_KEY"
+OPENAI_API_BASE_ENV = "OPENAI_API_BASE"
+OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 DEFAULT_ALLOWED_API_URLS = (
     "http://localhost:1234/v1",
     "http://127.0.0.1:1234/v1",
@@ -24,6 +26,19 @@ class ModelDiscoveryError(RuntimeError):
     """Raised when automatic model selection cannot make a safe choice."""
 
 
+def default_openai_base_url():
+    """Use the OpenAI environment default only without a Cyberdelia allowlist.
+
+    Existing workflows supply their own URL. The allowlist is an authorization
+    policy, not a list from which to select a new default endpoint.
+    """
+    if not os.environ.get(ALLOWED_API_URLS_ENV, "").strip():
+        configured = os.environ.get(OPENAI_API_BASE_ENV, "").strip()
+        if configured:
+            return configured
+    return DEFAULT_ALLOWED_API_URLS[0]
+
+
 def openai_request_headers(include_json=False):
     """Build OpenAI-compatible headers without exposing secrets to workflows.
 
@@ -32,7 +47,10 @@ def openai_request_headers(include_json=False):
     execution history, or generated-image metadata.
     """
     headers = {"Content-Type": "application/json"} if include_json else {}
-    api_key = os.environ.get(API_KEY_ENV, "").strip()
+    api_key = (
+        os.environ.get(API_KEY_ENV, "").strip()
+        or os.environ.get(OPENAI_API_KEY_ENV, "").strip()
+    )
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
@@ -79,6 +97,16 @@ def _canonicalize_openai_base_url(api_url):
 def _allowed_api_urls():
     allowed = set(DEFAULT_ALLOWED_API_URLS)
     configured = os.environ.get(ALLOWED_API_URLS_ENV, "")
+    if not configured.strip():
+        # OPENAI_API_BASE authorizes one host-configured endpoint, not arbitrary
+        # workflow URLs. Validate it with the same rules as the existing policy.
+        value = os.environ.get(OPENAI_API_BASE_ENV, "").strip()
+        if value:
+            try:
+                allowed.add(_canonicalize_openai_base_url(value))
+            except ValueError:
+                pass
+        return allowed
     for value in configured.replace("\n", ",").split(","):
         value = value.strip()
         if not value:
@@ -96,7 +124,8 @@ def normalize_openai_base_url(api_url):
     Workflow widget values are untrusted. Only LM Studio's default local URL and
     URLs explicitly configured by the machine owner may receive requests.
     """
-    normalized = _canonicalize_openai_base_url(api_url)
+    value = str(api_url or "").strip() or default_openai_base_url()
+    normalized = _canonicalize_openai_base_url(value)
     if normalized not in _allowed_api_urls():
         raise ValueError(
             "API URL is not allowed. For security, Prompt Engineer only permits "

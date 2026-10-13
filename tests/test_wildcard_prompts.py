@@ -197,6 +197,107 @@ class EditablePromptTests(unittest.TestCase):
         self.node.expand("First\n\nSecond", prompt_seed=42)
         self.assertEqual(before, random.getstate())
 
+    def test_inline_choices_accept_arbitrary_words_and_phrases_with_existing_tags(self):
+        arguments = {
+            "prompts": "An adult {type} person with a { small | large } bag in {daylight|soft studio lighting}.",
+            "prompt_seed": 42,
+        }
+        result = self.node.expand(**arguments)
+        expected = {
+            f"An adult mature person with a {size} bag in {light}."
+            for size in ("small", "large")
+            for light in ("daylight", "soft studio lighting")
+        }
+        self.assertIn(result[1], expected)
+        self.assertEqual(result, self.node.expand(**arguments))
+
+    def test_tag_choice_is_shared_by_repeated_uses_all_prompts_and_prefix(self):
+        result = self.node.expand(
+            "First {hair} hair and {hair} eyebrows.\n\nSecond {hair} hair.",
+            extra_tags="hair={red|brown|black}", prefix="{hair}", mode="all prompts",
+        )
+        chosen = result[0][0].split(", ", 1)[0]
+        self.assertIn(chosen, ("red", "brown", "black"))
+        self.assertEqual(result[0], [
+            f"{chosen}, First {chosen} hair and {chosen} eyebrows.",
+            f"{chosen}, Second {chosen} hair.",
+        ])
+        self.assertEqual(result[2], 2)
+
+    def test_replacement_choice_is_shared_by_all_matches_and_prompt_blocks(self):
+        result = self.node.expand(
+            "Straight hair and straight hair.\n\nAnother straight hair portrait.",
+            search_replace="straight hair={red|brown|black} hair", mode="all prompts",
+        )
+        chosen = result[0][0].split()[0]
+        self.assertIn(chosen, ("red", "brown", "black"))
+        self.assertEqual(result[0], [
+            f"{chosen} hair and {chosen} hair.",
+            f"Another {chosen} hair portrait.",
+        ])
+
+    def test_choices_in_replacement_and_tag_values_preserve_literal_backslashes(self):
+        for arguments in (
+            {"prompts": "{size}", "extra_tags": r"size={small\1|large\2}"},
+            {"prompts": "object", "search_replace": r"object={small\1|large\2}"},
+        ):
+            with self.subTest(arguments=arguments):
+                self.assertIn(self.node.expand(**arguments)[1], (r"small\1", r"large\2"))
+
+    def test_each_inline_choice_is_drawn_separately_and_seed_changes_results(self):
+        results = {
+            self.node.expand("{small|large} and {small|large}", prompt_seed=seed)[1]
+            for seed in range(32)
+        }
+        self.assertEqual(results, {
+            "small and small", "small and large", "large and small", "large and large",
+        })
+
+    def test_choices_do_not_change_which_prompt_block_is_selected(self):
+        original = self.node.expand("First scene\n\nSecond scene\n\nThird scene", prompt_seed=12345)
+        with_choices = self.node.expand(
+            "First {size}\n\nSecond {small|large}\n\nThird {size}",
+            extra_tags="size={small|large}", prefix="{day|night}", prompt_seed=12345,
+        )
+        selected = with_choices[1].split(", ", 1)[1].split()[0]
+        self.assertEqual(selected, original[1].split()[0])
+
+    def test_choice_draws_do_not_change_global_random_state(self):
+        before = random.getstate()
+        self.node.expand(
+            "{size} object in {daylight|studio lighting}", extra_tags="size={small|large}",
+            search_replace="object={bag|box}", prefix="{photo|illustration}", prompt_seed=42,
+        )
+        self.assertEqual(before, random.getstate())
+
+    def test_all_prompts_fingerprint_tracks_choice_seed(self):
+        arguments = {"prompts": "A {small|large} object", "mode": "all prompts"}
+        self.assertNotEqual(
+            self.node.IS_CHANGED(**arguments, prompt_seed=1),
+            self.node.IS_CHANGED(**arguments, prompt_seed=2),
+        )
+
+    def test_disabled_choices_leave_fallback_exactly_unchanged(self):
+        normal = "  A {small|large} object with {hair}.  "
+        self.assertEqual(self.node.expand(
+            "{day|night}", extra_tags="hair={red|brown|black}",
+            search_replace="object={bag|box}", prefix="{photo|illustration}",
+            enabled=False, fallback_prompt=normal,
+        ), ([normal], normal, 1))
+
+    def test_file_source_supports_choices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "prompts.txt"
+            file.write_text("A {small|large} object with {hair} hair.", encoding="utf-8")
+            result = self.node.expand(
+                "ignored", prompt_file=str(file), extra_tags="hair={red|brown|black}",
+            )
+        self.assertIn(result[1], {
+            f"A {size} object with {hair} hair."
+            for size in ("small", "large")
+            for hair in ("red", "brown", "black")
+        })
+
     def test_file_edits_are_detected_and_override_pasted_prompts(self):
         with tempfile.TemporaryDirectory() as directory:
             file = Path(directory) / "prompts.txt"

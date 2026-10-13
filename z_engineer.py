@@ -4,6 +4,7 @@ import requests
 
 from .model_utils import (
     chat_completions_endpoint,
+    default_openai_base_url,
     openai_request_headers,
     raise_for_status_without_redirect,
     resolve_model_name,
@@ -58,7 +59,7 @@ class CyberdeliaZEngineer:
                 }),
                 "api_url": ("STRING", {
                     "multiline": False,
-                    "default": "http://localhost:1234/v1",
+                    "default": default_openai_base_url(),
                 }),
                 "model": ("STRING", {
                     "multiline": False,
@@ -323,7 +324,7 @@ class CyberdeliaZEngineer:
                 return (
                     f"{feature_name} was not authorized by the LLM server "
                     f"(HTTP {status} from {api_url}). Set the "
-                    "CYBERDELIA_Z_ENGINEER_API_KEY environment variable before "
+                    "CYBERDELIA_Z_ENGINEER_API_KEY or OPENAI_API_KEY environment variable before "
                     "starting ComfyUI."
                 )
             return (

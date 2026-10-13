@@ -22,6 +22,7 @@ if PACKAGE_NAME not in sys.modules:
     spec.loader.exec_module(package)
 
 node_module = sys.modules[f"{PACKAGE_NAME}.z_engineer"]
+model_utils = sys.modules[f"{PACKAGE_NAME}.model_utils"]
 CyberdeliaZEngineer = node_module.CyberdeliaZEngineer
 
 
@@ -49,6 +50,14 @@ def http_error(status):
 
 class NodeTests(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: "",
+            model_utils.API_KEY_ENV: "",
+            model_utils.OPENAI_API_BASE_ENV: "",
+            model_utils.OPENAI_API_KEY_ENV: "",
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
         self.node = CyberdeliaZEngineer()
         self.clip = FakeClip()
         self.base_args = {
@@ -119,7 +128,10 @@ class NodeTests(unittest.TestCase):
             ) as post,
             patch.dict(
                 sys.modules[f"{PACKAGE_NAME}.model_utils"].os.environ,
-                {"CYBERDELIA_Z_ENGINEER_API_KEY": "secret-token"},
+                {
+                    "CYBERDELIA_Z_ENGINEER_API_KEY": "secret-token",
+                    "OPENAI_API_KEY": "ignored-token",
+                },
                 clear=False,
             ),
         ):
@@ -136,6 +148,62 @@ class NodeTests(unittest.TestCase):
     def test_max_tokens_supports_256k(self):
         widget = CyberdeliaZEngineer.INPUT_TYPES()["required"]["max_tokens"]
         self.assertEqual(widget[1]["max"], 262144)
+
+    def test_all_llm_nodes_use_openai_environment_for_new_node_defaults(self):
+        package = sys.modules[PACKAGE_NAME]
+        with patch.dict(model_utils.os.environ, {model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1"}):
+            for name in (
+                "CyberdeliaZEngineer", "CyberdeliaPromptEngineerText",
+                "CyberdeliaPromptEngineerChain", "CyberdeliaDanbooruPrompt",
+            ):
+                with self.subTest(name=name):
+                    inputs = package.NODE_CLASS_MAPPINGS[name].INPUT_TYPES()
+                    self.assertEqual(inputs["required"]["api_url"][1]["default"], "https://llm.example.test/v1")
+                    self.assertNotIn("api_key", inputs["required"])
+                    self.assertNotIn("api_key", inputs.get("optional", {}))
+
+    def test_cyberdelia_allowlist_preserves_existing_node_default(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: "https://primary.example.test/v1",
+            model_utils.OPENAI_API_BASE_ENV: "https://fallback.example.test/v1",
+        }):
+            self.assertEqual(CyberdeliaZEngineer.INPUT_TYPES()["required"]["api_url"][1]["default"], "http://localhost:1234/v1")
+
+    def test_chat_completion_uses_openai_base_and_key_for_empty_url(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+            model_utils.OPENAI_API_KEY_ENV: "openai-token",
+        }), patch.object(node_module.requests, "post", return_value=response_with("A result.")) as post:
+            result = self.node.generate_prompt(**{**self.base_args, "api_url": ""})
+        self.assertEqual(result[2], "A result.")
+        self.assertEqual(post.call_args.args[0], "https://llm.example.test:443/v1/chat/completions")
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer openai-token")
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
+    def test_openai_environment_does_not_redirect_existing_workflow_endpoint(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+        }), patch.object(node_module.requests, "post", return_value=response_with("A result.")) as post:
+            self.node.generate_prompt(**self.base_args)
+        self.assertEqual(post.call_args.args[0], "http://localhost:1234/v1/chat/completions")
+
+    def test_openai_environment_does_not_authorize_arbitrary_workflow_urls(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+        }), patch.object(node_module.requests, "post") as post:
+            with self.assertRaisesRegex(RuntimeError, "API URL is not allowed"):
+                self.node.generate_prompt(**{**self.base_args, "api_url": "http://169.254.169.254"})
+        post.assert_not_called()
+
+    def test_openai_environment_completion_still_rejects_redirects_without_retry(self):
+        response = Mock(status_code=302, headers={"Location": "http://169.254.169.254/"})
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+        }), patch.object(node_module.requests, "post", return_value=response) as post:
+            with self.assertRaisesRegex(RuntimeError, "HTTP 302"):
+                self.node.generate_prompt(**{**self.base_args, "api_url": ""}, retries=3)
+        self.assertEqual(post.call_count, 1)
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
     def test_remote_api_url_is_rejected_before_request(self):
         with patch.object(node_module.requests, "post") as post:

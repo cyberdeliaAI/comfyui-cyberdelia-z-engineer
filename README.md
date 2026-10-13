@@ -33,6 +33,13 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
 The separate **Cyberdelia Danbooru Prompt** node converts a normal scene description into real Danbooru tags, validates them against a bundled local vocabulary, and optionally wraps them in an editable prompt template.
 
+## Release 1.9.0
+
+- Random `{option|option}` choices in wildcard prompts, tag values, search/replace replacement text, and prefixes, controlled by `prompt_seed`.
+- `OPENAI_API_BASE` and `OPENAI_API_KEY` environment-variable fallbacks, with precedence for the existing Cyberdelia configuration and preserved endpoint security.
+
+Existing node IDs, widget order, and output indices remain unchanged. Restart ComfyUI after updating.
+
 ## Features
 
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
@@ -102,12 +109,31 @@ trigger=my_lora_keyword
 
 Use `{hair}`, `{type}`, or any other tag name in the templates. Empty or missing tags are removed, with surrounding spacing cleaned. For example, `A portrait of a {type} woman.` becomes `A portrait of a woman.` when `type` is empty or omitted.
 
+### Random choices
+
+Use `{option|option|...}` to choose arbitrary words or phrases. Choices work directly in prompt templates, in `extra_tags` values, in search/replace replacement text, and in `prefix`. For example:
+
+```text
+Prompt: A {small|large} portrait of an adult {type} woman with {hair} hair.
+
+extra_tags:
+hair={red|brown|black}
+type={young adult|middle-aged|older adult}
+
+search_replace:
+straight hair={red|brown|black} hair
+```
+
+Each tag value is chosen once per node execution, so repeated `{hair}` references use the same value, including in the prefix and across **all prompts**. Each replacement rule is also chosen once and uses that replacement for all its matches. Direct choice groups in prompt templates are drawn separately for each occurrence. Search text stays literal. Use flat choice groups; nested groups are not supported, and tag values are not recursively substituted.
+
+`prompt_seed` controls both these choices and prompt-block selection. A fixed seed with the same inputs repeats the result; **randomize** draws again each run, including in **all prompts** mode. Choice draws do not change which prompt block a seed selects. A new draw can repeat a previous result.
+
 Optional controls:
 
 - `search_replace`: one `search=replacement` per line, such as `woman=male`. Rules run after filling tags. Whole-word matching and case-insensitive matching are the defaults; both can be changed.
 - `prefix`: text or a LoRA trigger to prepend, such as `{trigger}`. A blank prefix is ignored. The prefix is added after search/replace.
 - `mode`: **random prompt** sends one prompt per run. **all prompts** sends every prompt separately and therefore runs downstream generation for each prompt.
-- `prompt_seed`: selects the prompt independently of the image seed. Use **randomize** to draw again each run, or **fixed** to repeat a selection. A random draw can repeat a previous prompt.
+- `prompt_seed`: selects the prompt and fills choice groups independently of the image seed. Use **randomize** to draw again each run, or **fixed** to repeat the result. A random draw can repeat a previous prompt or choice.
 
 Connect **prompts** to the `text` input of Prompt Engineer — Text or Conditioning. For Krea2, use the Text variant and connect its `prompt` output to the model's text encoder. Use **preview** only for a text preview: in all-prompts mode it contains all selected prompts joined together.
 
@@ -360,7 +386,7 @@ Fallback and passthrough text are never cleaned or modified.
 | `mode` | Enhanced LLM mode or raw passthrough |
 | `text` | Input concept or seed prompt |
 | `system_prompt` | Visible instructions sent to the LLM |
-| `api_url` | Allowlisted OpenAI-compatible base URL; `http://localhost:1234/v1` by default |
+| `api_url` | Allowlisted OpenAI-compatible base URL; defaults to `OPENAI_API_BASE` when no Cyberdelia allowlist is configured, otherwise `http://localhost:1234/v1` |
 | `model` | Manual model ID or `auto` |
 | `seed` | Sampling seed sent to the API |
 | `temperature` | Sampling temperature sent to the API |
@@ -413,8 +439,23 @@ export CYBERDELIA_Z_ENGINEER_API_KEY="your-api-key"
 ```
 
 The optional key is sent as `Authorization: Bearer ...` for both model
-discovery and chat-completion requests. Restart ComfyUI after changing either
-environment variable.
+discovery and chat-completion requests.
+
+### OpenAI environment variables
+
+`OPENAI_API_BASE` and `OPENAI_API_KEY` are supported as fallbacks:
+
+```bash
+export OPENAI_API_BASE="http://127.0.0.1:11434/v1"
+export OPENAI_API_KEY="your-api-key"
+```
+
+- A non-empty `CYBERDELIA_Z_ENGINEER_API_KEY` takes precedence over `OPENAI_API_KEY`.
+- A non-empty `CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS` takes precedence over `OPENAI_API_BASE`. It retains the existing allowlist behavior; the first URL in the list is not automatically selected.
+- When the Cyberdelia allowlist is unset or blank, `OPENAI_API_BASE` supplies the default `api_url` for new nodes and for empty URL inputs. It also authorizes that one normalized base URL, alongside the existing localhost defaults.
+- Existing workflows keep their explicit `api_url`; the environment does not overwrite it. That URL must still pass the allowlist check.
+
+Blank or whitespace-only values count as unset. URL validation and rejection of HTTP redirects apply to both configurations. Neither API-key variable becomes a node widget or is stored in workflows. Restart ComfyUI after changing these environment variables.
 
 ## Outputs
 

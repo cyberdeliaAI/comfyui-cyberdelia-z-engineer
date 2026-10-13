@@ -10,7 +10,127 @@ import model_utils
 
 class ModelUtilsTests(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: "",
+            model_utils.API_KEY_ENV: "",
+            model_utils.OPENAI_API_BASE_ENV: "",
+            model_utils.OPENAI_API_KEY_ENV: "",
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
         model_utils.clear_model_cache()
+
+    def test_default_endpoint_without_environment_remains_localhost(self):
+        self.assertEqual(model_utils.default_openai_base_url(), "http://localhost:1234/v1")
+        self.assertEqual(model_utils.chat_completions_endpoint(""), "http://localhost:1234/v1/chat/completions")
+
+    def test_openai_api_base_sets_default_and_authorizes_only_that_base(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: " https://llm.example.test/openai/ ",
+        }):
+            self.assertEqual(model_utils.default_openai_base_url(), "https://llm.example.test/openai/")
+            for value in ("", " ", None, "https://llm.example.test/openai/v1"):
+                with self.subTest(value=value):
+                    self.assertEqual(model_utils.normalize_openai_base_url(value), "https://llm.example.test:443/openai/v1")
+            for value in (
+                "https://other.example.test/openai/v1",
+                "https://llm.example.test/other/v1",
+                "https://llm.example.test:8443/openai/v1",
+                "http://169.254.169.254/latest/meta-data",
+            ):
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, "not allowed"):
+                    model_utils.normalize_openai_base_url(value)
+
+    def test_openai_api_base_does_not_override_explicit_workflow_url(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+        }):
+            self.assertEqual(model_utils.normalize_openai_base_url("http://localhost:1234/v1"), "http://localhost:1234/v1")
+
+    def test_cyberdelia_allowlist_takes_precedence_over_openai_api_base(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: "https://first.example.test/v1,https://second.example.test/v1",
+            model_utils.OPENAI_API_BASE_ENV: "https://fallback.example.test/v1",
+        }):
+            self.assertEqual(model_utils.default_openai_base_url(), "http://localhost:1234/v1")
+            self.assertEqual(model_utils.normalize_openai_base_url("https://first.example.test/v1"), "https://first.example.test:443/v1")
+            self.assertEqual(model_utils.normalize_openai_base_url("https://second.example.test/v1"), "https://second.example.test:443/v1")
+            with self.assertRaisesRegex(ValueError, "not allowed"):
+                model_utils.normalize_openai_base_url("https://fallback.example.test/v1")
+
+    def test_invalid_nonempty_cyberdelia_policy_does_not_enable_openai_fallback(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: "not-a-url",
+            model_utils.OPENAI_API_BASE_ENV: "https://fallback.example.test/v1",
+        }):
+            self.assertEqual(model_utils.default_openai_base_url(), "http://localhost:1234/v1")
+            with self.assertRaisesRegex(ValueError, "not allowed"):
+                model_utils.normalize_openai_base_url("https://fallback.example.test/v1")
+
+    def test_blank_cyberdelia_values_allow_openai_fallbacks(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.ALLOWED_API_URLS_ENV: " \n ",
+            model_utils.API_KEY_ENV: "  ",
+            model_utils.OPENAI_API_BASE_ENV: "https://fallback.example.test/v1",
+            model_utils.OPENAI_API_KEY_ENV: " fallback-token ",
+        }):
+            self.assertEqual(model_utils.normalize_openai_base_url(""), "https://fallback.example.test:443/v1")
+            self.assertEqual(model_utils.openai_request_headers(), {"Authorization": "Bearer fallback-token"})
+
+    def test_openai_api_key_is_used_when_cyberdelia_key_is_absent(self):
+        with patch.dict(model_utils.os.environ, {model_utils.OPENAI_API_KEY_ENV: "openai-token"}):
+            self.assertEqual(model_utils.openai_request_headers(include_json=True), {
+                "Content-Type": "application/json", "Authorization": "Bearer openai-token",
+            })
+
+    def test_cyberdelia_api_key_takes_precedence_over_openai_api_key(self):
+        with patch.dict(model_utils.os.environ, {
+            model_utils.API_KEY_ENV: " cyberdelia-token ",
+            model_utils.OPENAI_API_KEY_ENV: "openai-token",
+        }):
+            self.assertEqual(model_utils.openai_request_headers(), {"Authorization": "Bearer cyberdelia-token"})
+
+    @patch("model_utils.requests.get")
+    def test_invalid_openai_api_base_is_rejected_before_network_access(self, get):
+        for value in (
+            "file:///tmp/endpoint", "http://user:secret@localhost:1234/v1",
+            "https://llm.example.test/v1?query=yes", "https://llm.example.test/v1#fragment",
+            "https://llm.example.test:invalid/v1",
+        ):
+            with self.subTest(value=value), patch.dict(model_utils.os.environ, {model_utils.OPENAI_API_BASE_ENV: value}):
+                with self.assertRaises(ValueError):
+                    model_utils.discover_models("")
+        get.assert_not_called()
+
+    @patch("model_utils.requests.get")
+    def test_openai_environment_is_used_for_native_and_fallback_discovery(self, get):
+        native = Mock(status_code=200)
+        native.json.return_value = {"models": []}
+        fallback = Mock(status_code=200)
+        fallback.json.return_value = {"data": [{"id": "generic-model"}]}
+        get.side_effect = [native, fallback]
+        with patch.dict(model_utils.os.environ, {
+            model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1",
+            model_utils.OPENAI_API_KEY_ENV: "openai-token",
+        }):
+            models = model_utils.discover_models("")
+        self.assertEqual(models[0]["id"], "generic-model")
+        self.assertEqual([call.args[0] for call in get.call_args_list], [
+            "https://llm.example.test:443/api/v1/models", "https://llm.example.test:443/v1/models",
+        ])
+        for call in get.call_args_list:
+            self.assertEqual(call.kwargs["headers"], {"Authorization": "Bearer openai-token"})
+            self.assertFalse(call.kwargs["allow_redirects"])
+
+    @patch("model_utils.requests.get")
+    def test_openai_api_base_discovery_still_rejects_redirects(self, get):
+        get.return_value = Mock(status_code=302, headers={"Location": "http://169.254.169.254/"})
+        with patch.dict(model_utils.os.environ, {model_utils.OPENAI_API_BASE_ENV: "https://llm.example.test/v1"}):
+            with self.assertRaisesRegex(model_utils.ModelDiscoveryError, "redirects are disabled"):
+                model_utils.discover_models("")
+        self.assertEqual(get.call_count, 2)
+        for call in get.call_args_list:
+            self.assertFalse(call.kwargs["allow_redirects"])
 
     def test_normalize_openai_base_url(self):
         self.assertEqual(

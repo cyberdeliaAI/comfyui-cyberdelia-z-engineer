@@ -8,6 +8,7 @@ from pathlib import Path
 
 TAG = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 TAG_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+CHOICE = re.compile(r"\{([^{}\r\n]*\|[^{}\r\n]*)\}")
 DEFAULT_TAGS = "hair=blonde\ntype=mature"
 DEFAULT_PROMPTS = (
     "A studio portrait of an adult {type} woman with {hair} hair, soft lighting."
@@ -42,7 +43,18 @@ def read_source(prompts, prompt_file=""):
         raise ValueError(f"Cannot read prompt file '{path}': {exc.strerror or exc}") from exc
 
 
-def make_tags(extra_tags=""):
+def resolve_choices(text, rng=None):
+    """Choose one literal alternative from each flat {red|brown|black} group."""
+    if rng is None:
+        return text
+
+    def choose(match):
+        return rng.choice([part.strip() for part in match.group(1).split("|")])
+
+    return CHOICE.sub(choose, text)
+
+
+def make_tags(extra_tags="", rng=None):
     tags = {}
     for number, line in enumerate(extra_tags.splitlines(), start=1):
         line = line.strip()
@@ -54,11 +66,12 @@ def make_tags(extra_tags=""):
             raise ValueError(f"Tag on line {number}: use name=value, e.g. hair=blonde.")
         if name in tags:
             raise ValueError(f"Tag '{name}' is already defined. Use each tag name once.")
-        tags[name] = value.strip()
+        # Resolve each tag once so repeated uses share the same selected value.
+        tags[name] = resolve_choices(value.strip(), rng)
     return tags
 
 
-def fill_text(text, tags):
+def fill_text(text, tags, rng=None):
     removed_tag = False
 
     def substitute(match):
@@ -70,7 +83,7 @@ def fill_text(text, tags):
         return value
 
     # A callback preserves literal values and performs only one substitution pass.
-    rendered = TAG.sub(substitute, text)
+    rendered = TAG.sub(substitute, resolve_choices(text, rng))
     if removed_tag:
         # Clean horizontal spacing after removing optional tags, keeping the
         # prompt's line breaks intact.
@@ -80,7 +93,7 @@ def fill_text(text, tags):
     return rendered
 
 
-def fill_prompts(source, tags, prompt_separator="blank line"):
+def fill_prompts(source, tags, prompt_separator="blank line", rng=None):
     source = source.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
     if prompt_separator == "blank line":
         # Preserve internal line breaks when a blank line separates prompts.
@@ -92,10 +105,10 @@ def fill_prompts(source, tags, prompt_separator="blank line"):
     blocks = [block.strip() for block in parts if block.strip()]
     if not blocks:
         raise ValueError("Add at least one prompt.")
-    return [fill_text(block, tags) for block in blocks]
+    return [fill_text(block, tags, rng) for block in blocks]
 
 
-def replace_text(prompts, search_replace="", replace_match="whole words", case_sensitive=False):
+def replace_text(prompts, search_replace="", replace_match="whole words", case_sensitive=False, rng=None):
     if replace_match not in ("whole words", "literal text"):
         raise ValueError("Choose 'whole words' or 'literal text' for replace_match.")
     rules = []
@@ -110,7 +123,8 @@ def replace_text(prompts, search_replace="", replace_match="whole words", case_s
         if replace_match == "whole words":
             pattern = r"(?<!\w)" + pattern + r"(?!\w)"
         flags = 0 if case_sensitive else re.IGNORECASE
-        rules.append((re.compile(pattern, flags), replacement.strip()))
+        # Choose once per rule, keeping repeated matches and prompt blocks consistent.
+        rules.append((re.compile(pattern, flags), resolve_choices(replacement.strip(), rng)))
 
     output = []
     for prompt in prompts:
@@ -136,11 +150,11 @@ def select_prompts(rendered, mode="random prompt", prompt_seed=0):
     return (selected, "\n\n".join(selected), len(selected))
 
 
-def prepend_prefix(prompts, prefix, tags):
+def prepend_prefix(prompts, prefix, tags, rng=None):
     prefix = prefix.strip()
     if not prefix:
         return prompts
-    prefix = fill_text(prefix, tags)
+    prefix = fill_text(prefix, tags, rng)
     if not prefix.strip(", :;\t\r\n"):
         return prompts
     separator = " " if prefix.endswith((",", ":", ";")) else ", "
@@ -155,11 +169,11 @@ class WildcardLoRAPrompts:
                 "prompts": ("STRING", {
                     "default": DEFAULT_PROMPTS, "multiline": True,
                     "dynamicPrompts": False,
-                    "tooltip": "Paste prompts here. Choose blank-line separation or one prompt per line with prompt_separator.",
+                    "tooltip": "Paste prompts here. Use {hair} tags or choices such as {red|brown|black}. Choose blank-line separation or one prompt per line with prompt_separator.",
                 }),
                 "extra_tags": ("STRING", {
                     "default": DEFAULT_TAGS, "multiline": True, "dynamicPrompts": False,
-                    "tooltip": "Define tags here, one name=value per line. Missing or empty tags are removed from the prompt. Example: hair=blonde and type=mature.",
+                    "tooltip": "Define tags here, one name=value per line. Values can use choices, e.g. hair={red|brown|black}; each tag is chosen once per run. Missing or empty tags are removed from the prompt.",
                 }),
             },
             "optional": {
@@ -173,7 +187,7 @@ class WildcardLoRAPrompts:
                 }),
                 "search_replace": ("STRING", {
                     "default": "", "multiline": True, "dynamicPrompts": False,
-                    "tooltip": "One search=replacement per line, e.g. woman=male. Rules run in order, after filling tags. An empty replacement deletes the matched text.",
+                    "tooltip": "One search=replacement per line, e.g. straight hair={red|brown|black} hair. Choices are selected once per rule. Rules run after filling tags. An empty replacement deletes the matched text.",
                 }),
                 "replace_match": (["whole words", "literal text"], {
                     "default": "whole words",
@@ -185,7 +199,7 @@ class WildcardLoRAPrompts:
                 }),
                 "prefix": ("STRING", {
                     "default": "", "dynamicPrompts": False,
-                    "tooltip": "Optional keyword or text at the beginning of the final prompt. Empty ignores it. Can use tags such as {trigger}. Added after search/replace.",
+                    "tooltip": "Optional keyword or text at the beginning of the final prompt. Empty ignores it. Can use {trigger} tags or {red|brown|black} choices. Added after search/replace.",
                 }),
                 "mode": (["random prompt", "all prompts"], {
                     "default": "random prompt",
@@ -194,7 +208,7 @@ class WildcardLoRAPrompts:
                 "prompt_seed": ("INT", {
                     "default": 0, "min": 0, "max": 0xFFFFFFFF,
                     "control_after_generate": True,
-                    "tooltip": "Controls prompt selection only. Set its control_after_generate to randomize for a new draw each run, or fixed to repeat the selection.",
+                    "tooltip": "Controls prompt selection and {red|brown|black} choices. Set its control_after_generate to randomize for new draws each run, or fixed to repeat the result.",
                 }),
                 "enabled": ("BOOLEAN", {
                     "default": True,
@@ -214,7 +228,7 @@ class WildcardLoRAPrompts:
     OUTPUT_IS_LIST = (True, False, False)
     FUNCTION = "expand"
     CATEGORY = "Cyberdelia/Prompt"
-    DESCRIPTION = "Choose one random prompt per run, fill editable tags, remove unfilled tags, apply search/replace, and optionally add a prefix. Turn wildcards off to send one normal prompt unchanged."
+    DESCRIPTION = "Choose one random prompt per run, fill editable tags and {option|option} choices, remove unfilled tags, apply search/replace, and optionally add a prefix. Turn wildcards off to send one normal prompt unchanged."
     SEARCH_ALIASES = ["wildcard", "lora test", "prompt template", "prompt list"]
 
     @classmethod
@@ -229,7 +243,7 @@ class WildcardLoRAPrompts:
             # retains its modification time or its size does not change.
             source = read_source(prompts, prompt_file)
             fingerprint = hashlib.sha256(source.encode("utf-8")).hexdigest()
-        return (fingerprint, prompt_separator, mode, prompt_seed if mode == "random prompt" else None)
+        return (fingerprint, prompt_separator, mode, prompt_seed)
 
     def expand(self, prompts, extra_tags=DEFAULT_TAGS, prompt_file="", prompt_separator="blank line", search_replace="", replace_match="whole words", case_sensitive=False, prefix="", mode="random prompt", prompt_seed=0, enabled=True, fallback_prompt=""):
         if not enabled:
@@ -238,8 +252,10 @@ class WildcardLoRAPrompts:
             prompt = str(fallback_prompt or "")
             return ([prompt], prompt, 1)
         source = read_source(prompts, prompt_file)
-        tags = make_tags(extra_tags)
-        rendered = fill_prompts(source, tags, prompt_separator)
-        rendered = replace_text(rendered, search_replace, replace_match, case_sensitive)
-        rendered = prepend_prefix(rendered, prefix, tags)
+        # Keep choice draws separate from block selection and the global RNG.
+        rng = random.Random(f"choices:{prompt_seed}")
+        tags = make_tags(extra_tags, rng)
+        rendered = fill_prompts(source, tags, prompt_separator, rng)
+        rendered = replace_text(rendered, search_replace, replace_match, case_sensitive, rng)
+        rendered = prepend_prefix(rendered, prefix, tags, rng)
         return select_prompts(rendered, mode, prompt_seed)
