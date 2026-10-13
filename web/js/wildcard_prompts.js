@@ -1,11 +1,50 @@
 import { app } from "../../../scripts/app.js";
 
+function resetSequence(node, recordChange = true) {
+    const index = node.widgets?.find((widget) => widget.name === "sequence_index");
+    if (!index) return;
+    if (recordChange) node.graph?.beforeChange?.();
+    index.value = 0;
+    index.callback?.(index.value);
+    if (recordChange) node.graph?.afterChange?.();
+    node.graph?.setDirtyCanvas?.(true, true);
+}
+
+function frontendButton(node, name, callback) {
+    const widget = node.addWidget("button", name, null, callback, { serialize: false });
+    widget.serialize = false;
+    widget.serializeValue = () => undefined;
+    return widget;
+}
+
 app.registerExtension({
     name: "cyberdelia.wildcard.loadPrompts",
     nodeCreated(node) {
         if (node.comfyClass !== "WildcardLoRAPromptsV3") return;
 
-        node.addWidget("button", "Load .txt", null, () => {
+        const index = node.widgets?.find((widget) => widget.name === "sequence_index");
+        if (index) {
+            const previousAfterQueued = index.afterQueued;
+            index.afterQueued = function (...args) {
+                const result = previousAfterQueued?.apply(this, args);
+                const mode = node.widgets?.find((widget) => widget.name === "mode");
+                const enabled = node.widgets?.find((widget) => widget.name === "enabled");
+                // Connected indices are owned by the upstream node/API client.
+                const connected = node.inputs?.some((input) => input.name === "sequence_index" && input.link != null);
+                if (mode?.value === "sequential prompt" && enabled?.value !== false && !connected) {
+                    // afterQueued runs after serialization and successful submission,
+                    // once for each entry in Run's batch count, not after execution.
+                    const value = Number(index.value);
+                    if (Number.isSafeInteger(value) && value >= 0) {
+                        index.value = Math.min(value + 1, 0xFFFFFFFF);
+                        node.graph?.setDirtyCanvas?.(true, true);
+                    }
+                }
+                return result;
+            };
+        }
+
+        frontendButton(node, "Load .txt", () => {
             const picker = document.createElement("input");
             picker.type = "file";
             picker.accept = ".txt,text/plain";
@@ -25,6 +64,7 @@ app.registerExtension({
                         path.value = "";
                         path.callback?.(path.value);
                     }
+                    resetSequence(node, false);
                     node.graph?.afterChange?.();
                     node.graph?.setDirtyCanvas?.(true, true);
                 } catch (error) {
@@ -32,6 +72,7 @@ app.registerExtension({
                 }
             }, { once: true });
             picker.click();
-        }, { serialize: false });
+        });
+        frontendButton(node, "Reset sequence", () => resetSequence(node));
     },
 });

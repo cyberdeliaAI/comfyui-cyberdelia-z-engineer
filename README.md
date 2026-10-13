@@ -27,13 +27,22 @@ Cyberdelia Prompt Engineer sends text, or an optional image plus instructions, t
 | **Prompt Engineer — Conditioning** | Yes | Positive, negative, prompt | Workflows that use normal CLIP conditioning directly |
 | **Prompt Engineer — Chain** | No | Final prompt plus five stage previews | Applying multiple system prompts sequentially |
 | **Danbooru Prompt** | No | Prompt, tags, dropped tags | Anime checkpoints trained on booru-style captions |
-| **Wildcard Prompts** | No | Prompts, preview, prompt count | LoRA testing with editable templates and one random prompt per run |
+| **Wildcard Prompts** | No | Prompts, preview, prompt count | LoRA testing with editable templates and random or sequential prompts |
 
 Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
 The separate **Cyberdelia Danbooru Prompt** node converts a normal scene description into real Danbooru tags, validates them against a bundled local vocabulary, and optionally wraps them in an editable prompt template.
 
-## Release 1.9.0
+## Release 1.10.0
+
+- **Sequential prompt** mode sends one prompt in file/text order per queued workflow, so each prompt completes the generation, upscale and save chain before the next queued run.
+- **Repeat list** defaults to off. With 20 prompts and 30 runs, the final 10 skip the dependent generation chain; turning it on repeats prompts 1–10 for those runs.
+- **Reset sequence** restarts at prompt 1. The zero-based `sequence_index` advances after each successful frontend queue submission and is saved in the workflow.
+- Regression tests cover sequential ordering, skipped runs, repeat/reset behavior, frontend queue advancement, and existing workflow compatibility.
+
+Existing node IDs, widget positions, output indices, random/all-prompts modes and wildcards-off passthrough remain compatible. New controls are appended. Restart ComfyUI and refresh the browser after updating. End-of-list skipping requires ComfyUI's `ExecutionBlocker` support.
+
+### Release 1.9.0
 
 - Random `{option|option}` choices in wildcard prompts, tag values, search/replace replacement text, and prefixes, controlled by `prompt_seed`.
 - `OPENAI_API_BASE` and `OPENAI_API_KEY` environment-variable fallbacks, with precedence for the existing Cyberdelia configuration and preserved endpoint security.
@@ -43,7 +52,7 @@ Existing node IDs, widget order, and output indices remain unchanged. Restart Co
 ## Features
 
 - **Prompt-only Text node** — text and Vision generation without loading or connecting CLIP
-- **Wildcard Prompts** — load a `.txt` or paste templates, fill editable tags, replace text, add a trigger prefix, and choose one random prompt per run
+- **Wildcard Prompts** — load a `.txt` or paste templates, fill editable tags, replace text, add a trigger prefix, and choose random or sequential prompts per run
 - **Wildcard on/off switch** — keep the node connected and send one unchanged normal prompt when disabled
 - **Sequential Prompt Chain** — process one prompt through one to five system prompts and inspect every intermediate result
 - **Optional direct CLIP encoding** — use the Conditioning variant when sampler-ready conditioning is wanted
@@ -132,10 +141,21 @@ Optional controls:
 
 - `search_replace`: one `search=replacement` per line, such as `woman=male`. Rules run after filling tags. Whole-word matching and case-insensitive matching are the defaults; both can be changed.
 - `prefix`: text or a LoRA trigger to prepend, such as `{trigger}`. A blank prefix is ignored. The prefix is added after search/replace.
-- `mode`: **random prompt** sends one prompt per run. **all prompts** sends every prompt separately and therefore runs downstream generation for each prompt.
+- `mode`: **random prompt** sends one randomly selected prompt per run. **sequential prompt** sends one prompt in file/text order per queued workflow. **all prompts** preserves the existing list output: every prompt in one workflow, processed per node rather than completing the entire chain for each prompt first.
 - `prompt_seed`: selects the prompt and fills choice groups independently of the image seed. Use **randomize** to draw again each run, or **fixed** to repeat the result. A random draw can repeat a previous prompt or choice.
 
 Connect **prompts** to the `text` input of Prompt Engineer — Text or Conditioning. For Krea2, use the Text variant and connect its `prompt` output to the model's text encoder. Use **preview** only for a text preview: in all-prompts mode it contains all selected prompts joined together.
+
+### Run a complete workflow for each prompt
+
+Choose **sequential prompt**, set `sequence_index` to **0** (or click **Reset sequence**), and set the Run count to the number of prompts. With 20 prompts and 20 runs, each queued workflow receives one prompt and completes its generation, upscale and save chain. Use an image/latent batch size of **1** for one image per prompt.
+
+- `repeat_list` defaults to **off**. With 20 prompts and 30 runs, the first 20 use prompts 1–20; the final 10 silently skip nodes dependent on the prompt outputs. They remain queue entries; independent workflow branches may still execute.
+- Turn `repeat_list` **on** to wrap around: runs 21–30 use prompts 1–10 again.
+- `sequence_index` is zero-based and advances after each successful queue submission in the ComfyUI frontend, including each entry in Run's count. It records the next index to queue and is saved in the workflow. Reset it before starting a fresh sequence or after editing the prompt source; loading a file with **Load .txt** resets it automatically.
+- Random/all-prompts modes and wildcards-off passthrough do not advance the index. `prompt_seed` controls choices independently and can still randomize between runs.
+- Already queued entries retain their submitted index. Resetting does not rewrite the queue; canceled or failed runs do not rewind the index. Set it to the desired prompt index to retry.
+- API clients must supply and increment `sequence_index` themselves. End-of-list skipping requires ComfyUI's `ExecutionBlocker` support. Older ComfyUI installations retain random/all-prompts behavior, but must be updated to use skipping.
 
 ### Turn wildcards on or off without reconnecting
 

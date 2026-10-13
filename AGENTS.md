@@ -64,6 +64,11 @@ local Danbooru tag validation.
 - Retries target connection errors, timeouts, HTTP 429, and HTTP 5xx.
 - Danbooru uses a local database, not a live Danbooru API.
 - Wildcard selection uses a local RNG; `prompts` is a list output.
+- Sequential wildcard mode uses an explicit zero-based `sequence_index`,
+  advanced by the frontend after each successful queue submission. API clients
+  advance it themselves. `repeat_list` defaults off; exhausted sequences emit
+  a silent ComfyUI `ExecutionBlocker`, never an empty generation prompt.
+  Preserve legacy `random prompt` and `all prompts` modes and widget order.
 - Preserve endpoint allowlisting and rejection of HTTP redirects.
   `CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS` takes precedence over the
   `OPENAI_API_BASE` fallback; explicit workflow URLs remain subject to the policy.
@@ -77,6 +82,8 @@ local Danbooru tag validation.
 - Run from the repository root:
   `python -m unittest discover -s tests -v`
 - GitHub Actions runs this suite with Python 3.11.
+- Wildcard queue/frontend regression tests use Node.js 22 in GitHub Actions:
+  `node --test tests/test_wildcard_frontend.mjs` (Node built-ins only).
 - Tests use mocks and, when needed, a `requests` stub. They do not prove
   complete operation with ComfyUI, real models, or the frontend.
 - Do not include models, checkpoints, credentials, or private workflow

@@ -368,7 +368,96 @@ class EditablePromptTests(unittest.TestCase):
     def test_toggle_widgets_are_appended_for_existing_workflows(self):
         inputs = self.node.INPUT_TYPES()
         self.assertTrue(inputs["optional"]["enabled"][1]["default"])
-        self.assertEqual(list(inputs["optional"])[-2:], ["enabled", "fallback_prompt"])
+        self.assertEqual(list(inputs["optional"]), [
+            "prompt_file", "prompt_separator", "search_replace", "replace_match",
+            "case_sensitive", "prefix", "mode", "prompt_seed", "enabled",
+            "fallback_prompt", "repeat_list", "sequence_index",
+        ])
+
+    def test_sequential_20_file_prompts_skip_last_10_of_30_runs(self):
+        class ExecutionBlocker:
+            def __init__(self, message):
+                self.message = message
+
+        graph = types.SimpleNamespace(ExecutionBlocker=ExecutionBlocker)
+        expected = [f"Scene {number}" for number in range(1, 21)]
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"comfy_execution.graph": graph}):
+            file = Path(directory) / "prompts.txt"
+            file.write_text("\n".join(expected), encoding="utf-8")
+            results = [self.node.expand(
+                "ignored", prompt_file=str(file), prompt_separator="one per line",
+                mode="sequential prompt", sequence_index=index,
+            ) for index in range(30)]
+        self.assertEqual([result[0][0] for result in results[:20]], expected)
+        for prompts, preview, count in results[:20]:
+            self.assertEqual((prompts, count), ([preview], 1))
+        for prompts, preview, count in results[20:]:
+            self.assertIsInstance(prompts[0], ExecutionBlocker)
+            self.assertIs(prompts[0], preview)
+            self.assertIsNone(preview.message)
+            self.assertEqual(count, 0)
+
+    def test_sequential_repeat_wraps_30_runs_over_20_prompts(self):
+        expected = [f"Scene {number}" for number in range(1, 21)]
+        results = [self.node.expand(
+            "\n\n".join(expected), mode="sequential prompt", repeat_list=True,
+            sequence_index=index,
+        ) for index in range(30)]
+        self.assertEqual([result[1] for result in results], expected + expected[:10])
+        self.assertTrue(all(result[2] == 1 for result in results))
+
+    def test_sequential_defaults_and_reset_do_not_depend_on_instance_state(self):
+        inputs = self.node.INPUT_TYPES()
+        self.assertFalse(inputs["optional"]["repeat_list"][1]["default"])
+        self.assertEqual(inputs["optional"]["sequence_index"][1]["default"], 0)
+        self.assertEqual(inputs["optional"]["mode"][0], ["random prompt", "sequential prompt", "all prompts"])
+        for index, expected in ((1, "Second"), (0, "First"), (1, "Second")):
+            # Replaying the same queued index is deterministic, including after
+            # a restart or retry, and different node instances share no cursor.
+            for node in (self.node, nodes.WildcardLoRAPrompts()):
+                self.assertEqual(node.expand("First\n\nSecond", mode="sequential prompt", sequence_index=index), ([expected], expected, 1))
+
+    def test_sequential_preserves_tags_choices_replacements_prefix_and_seed(self):
+        arguments = dict(
+            prompts="First {size} woman\n\nSecond {small|large} woman",
+            extra_tags="size={small|large}", search_replace="woman=person",
+            prefix="photo", prompt_seed=42,
+        )
+        all_prompts = self.node.expand(**arguments, mode="all prompts")[0]
+        for index in range(2):
+            result = self.node.expand(**arguments, mode="sequential prompt", sequence_index=index)
+            self.assertEqual(result, ([all_prompts[index]], all_prompts[index], 1))
+        # A changing prompt seed must not restart the sequence.
+        self.assertTrue(self.node.expand(**{**arguments, "prompt_seed": 99}, mode="sequential prompt", sequence_index=1)[1].startswith("photo, Second"))
+
+    def test_sequential_rejects_invalid_indices(self):
+        for index in (-1, 1.5, "1", True):
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, "non-negative integer"):
+                self.node.expand("First", mode="sequential prompt", sequence_index=index)
+
+    def test_sequential_skipping_on_old_comfyui_fails_without_sending_empty_prompt(self):
+        with patch.dict(sys.modules, {"comfy_execution.graph": None}):
+            with self.assertRaisesRegex(RuntimeError, "Update ComfyUI"):
+                self.node.expand("First", mode="sequential prompt", sequence_index=1)
+
+    def test_new_sequence_options_do_not_change_legacy_modes_or_disabled_passthrough(self):
+        for mode in ("random prompt", "all prompts"):
+            arguments = dict(prompts="First\n\nSecond", mode=mode, prompt_seed=42)
+            self.assertEqual(self.node.expand(**arguments), self.node.expand(**arguments, sequence_index=30, repeat_list=True))
+        self.assertEqual(self.node.expand(
+            "First", mode="sequential prompt", sequence_index=30,
+            enabled=False, fallback_prompt="  Exact {tag}  ",
+        ), (["  Exact {tag}  "], "  Exact {tag}  ", 1))
+
+    def test_sequential_file_fingerprint_still_detects_content_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "prompts.txt"
+            file.write_text("First", encoding="utf-8")
+            arguments = dict(prompt_file=str(file), mode="sequential prompt", sequence_index=1)
+            before = self.node.IS_CHANGED(**arguments)
+            file.write_text("First\n\nSecond", encoding="utf-8")
+            self.assertNotEqual(before, self.node.IS_CHANGED(**arguments))
+            self.assertEqual(self.node.expand("", **arguments)[1], "Second")
 
     def test_package_preserves_engineer_nodes_and_current_wildcard_id(self):
         package_path = Path(__file__).resolve().parents[1]

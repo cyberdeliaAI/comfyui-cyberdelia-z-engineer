@@ -139,14 +139,27 @@ def replace_text(prompts, search_replace="", replace_match="whole words", case_s
     return output
 
 
-def select_prompts(rendered, mode="random prompt", prompt_seed=0):
+def select_prompts(rendered, mode="random prompt", prompt_seed=0, repeat_list=False, sequence_index=0):
     if mode == "random prompt":
         # Use a local RNG so prompt selection never changes the sampler's state.
         selected = [random.Random(prompt_seed).choice(rendered)]
     elif mode == "all prompts":
         selected = rendered
+    elif mode == "sequential prompt":
+        if not isinstance(sequence_index, int) or isinstance(sequence_index, bool) or sequence_index < 0:
+            raise ValueError("sequence_index must be a non-negative integer.")
+        if sequence_index >= len(rendered) and not repeat_list:
+            # An empty string/list can still run a sampler with empty or stale
+            # conditioning. Propagate ComfyUI's silent blocker instead.
+            try:
+                from comfy_execution.graph import ExecutionBlocker
+            except ImportError as exc:
+                raise RuntimeError("Sequential prompt skipping requires ComfyUI with ExecutionBlocker support. Update ComfyUI.") from exc
+            blocker = ExecutionBlocker(None)
+            return ([blocker], blocker, 0)
+        selected = [rendered[sequence_index % len(rendered)]]
     else:
-        raise ValueError("Choose 'random prompt' or 'all prompts' for mode.")
+        raise ValueError("Choose 'random prompt', 'sequential prompt' or 'all prompts' for mode.")
     return (selected, "\n\n".join(selected), len(selected))
 
 
@@ -201,9 +214,9 @@ class WildcardLoRAPrompts:
                     "default": "", "dynamicPrompts": False,
                     "tooltip": "Optional keyword or text at the beginning of the final prompt. Empty ignores it. Can use {trigger} tags or {red|brown|black} choices. Added after search/replace.",
                 }),
-                "mode": (["random prompt", "all prompts"], {
+                "mode": (["random prompt", "sequential prompt", "all prompts"], {
                     "default": "random prompt",
-                    "tooltip": "Random prompt sends one prompt per run. All prompts processes every prompt block.",
+                    "tooltip": "Random prompt chooses one prompt per run. Sequential prompt sends the next prompt per queued workflow. All prompts is the existing list mode: every prompt block in one workflow.",
                 }),
                 "prompt_seed": ("INT", {
                     "default": 0, "min": 0, "max": 0xFFFFFFFF,
@@ -220,6 +233,14 @@ class WildcardLoRAPrompts:
                     "default": "", "multiline": True, "dynamicPrompts": False,
                     "tooltip": "Normal prompt used when wildcards are off. Enter it here, or connect the prompt output of Cyberdelia Prompt Controls. An empty value sends one empty prompt.",
                 }),
+                "repeat_list": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Sequential mode only. Off skips the dependent generation chain after the last prompt; on repeats the list from the beginning.",
+                }),
+                "sequence_index": ("INT", {
+                    "default": 0, "min": 0, "max": 0xFFFFFFFF,
+                    "tooltip": "Sequential mode only. Zero selects the first prompt. Advances after each successful queue submission in the UI. Reset sequence starts over. API clients must increment this input themselves.",
+                }),
             },
         }
 
@@ -228,11 +249,11 @@ class WildcardLoRAPrompts:
     OUTPUT_IS_LIST = (True, False, False)
     FUNCTION = "expand"
     CATEGORY = "Cyberdelia/Prompt"
-    DESCRIPTION = "Choose one random prompt per run, fill editable tags and {option|option} choices, remove unfilled tags, apply search/replace, and optionally add a prefix. Turn wildcards off to send one normal prompt unchanged."
+    DESCRIPTION = "Choose a random prompt, advance sequentially per queued workflow, or output all prompts as a list. Fill tags and {option|option} choices, apply search/replace and a prefix. Sequential mode skips the dependent generation chain at the end unless repeat_list is on."
     SEARCH_ALIASES = ["wildcard", "lora test", "prompt template", "prompt list"]
 
     @classmethod
-    def IS_CHANGED(cls, prompts="", extra_tags=DEFAULT_TAGS, prompt_file="", prompt_separator="blank line", search_replace="", replace_match="whole words", case_sensitive=False, prefix="", mode="random prompt", prompt_seed=0, enabled=True, fallback_prompt=""):
+    def IS_CHANGED(cls, prompts="", extra_tags=DEFAULT_TAGS, prompt_file="", prompt_separator="blank line", search_replace="", replace_match="whole words", case_sensitive=False, prefix="", mode="random prompt", prompt_seed=0, enabled=True, fallback_prompt="", repeat_list=False, sequence_index=0):
         if not enabled:
             # ComfyUI also checks file fingerprints before execution. Bypass
             # this read when disabled, including for a missing or invalid path.
@@ -245,7 +266,7 @@ class WildcardLoRAPrompts:
             fingerprint = hashlib.sha256(source.encode("utf-8")).hexdigest()
         return (fingerprint, prompt_separator, mode, prompt_seed)
 
-    def expand(self, prompts, extra_tags=DEFAULT_TAGS, prompt_file="", prompt_separator="blank line", search_replace="", replace_match="whole words", case_sensitive=False, prefix="", mode="random prompt", prompt_seed=0, enabled=True, fallback_prompt=""):
+    def expand(self, prompts, extra_tags=DEFAULT_TAGS, prompt_file="", prompt_separator="blank line", search_replace="", replace_match="whole words", case_sensitive=False, prefix="", mode="random prompt", prompt_seed=0, enabled=True, fallback_prompt="", repeat_list=False, sequence_index=0):
         if not enabled:
             # Keep one output item even in all-prompts mode, and bypass every
             # wildcard transformation so the user's normal prompt is exact.
@@ -258,4 +279,4 @@ class WildcardLoRAPrompts:
         rendered = fill_prompts(source, tags, prompt_separator, rng)
         rendered = replace_text(rendered, search_replace, replace_match, case_sensitive, rng)
         rendered = prepend_prefix(rendered, prefix, tags, rng)
-        return select_prompts(rendered, mode, prompt_seed)
+        return select_prompts(rendered, mode, prompt_seed, repeat_list, sequence_index)
