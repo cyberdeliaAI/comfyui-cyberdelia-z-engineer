@@ -9,6 +9,7 @@ on:
       - "pyproject.toml"
 
 permissions:
+  contents: read
   issues: write
 
 jobs:
@@ -21,6 +22,20 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Set up Python for tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+      - name: Set up Node.js for frontend tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run frontend tests
+        run: node --test tests/test_wildcard_frontend.mjs
       - name: Publish Custom Node
         uses: Comfy-Org/publish-node-action@v1
         with:

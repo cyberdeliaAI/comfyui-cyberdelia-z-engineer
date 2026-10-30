@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 *.zip
 .DS_Store
+output/
+CIVITAI_*.md
+assets/civitai-*

@@ -166,6 +166,35 @@ class PromptChainTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "stage failed"):
                 self.node.run_chain(**self.base_args)
 
+    @patch.object(chain_module, "resolve_model_name", return_value="resolved-model")
+    def test_empty_mode_stops_the_chain_with_an_empty_prompt(self, _resolve_model):
+        for handoff in (chain_module.PREVIOUS_OUTPUT_ONLY, chain_module.ORIGINAL_AND_PREVIOUS):
+            args = {**self.base_args, "error_mode": "empty", "handoff_mode": handoff}
+            with self.subTest(handoff=handoff), patch.object(
+                self.node,
+                "_generate_final_text",
+                side_effect=["after A", RuntimeError("stage failed"), "after C"],
+            ) as generate:
+                result = self.node.run_chain(**args)
+            self.assertEqual(generate.call_count, 2)
+            self.assertEqual(result, ("", "after A", "", "", "", ""))
+
+    @patch.object(chain_module, "resolve_model_name", return_value="resolved-model")
+    def test_original_is_not_repeated_before_any_stage_produced_output(self, _resolve_model):
+        args = {
+            **self.base_args,
+            "handoff_mode": chain_module.ORIGINAL_AND_PREVIOUS,
+            "system_prompt_1": "",
+        }
+        with patch.object(
+            self.node,
+            "_generate_final_text",
+            side_effect=["after B", "after C"],
+        ) as generate:
+            self.node.run_chain(**args)
+        self.assertEqual(generate.call_args_list[0].args[1], "a lighthouse in a storm")
+        self.assertIn("Previous stage output:\nafter B", generate.call_args_list[1].args[1])
+
 
 if __name__ == "__main__":
     unittest.main()

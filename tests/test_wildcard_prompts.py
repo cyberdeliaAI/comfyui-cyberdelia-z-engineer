@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import random
 import sys
 import tempfile
@@ -14,6 +15,20 @@ ensure_requests()
 spec = importlib.util.spec_from_file_location("wildcard_nodes", Path(__file__).resolve().parents[1] / "wildcard_prompts.py")
 nodes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes)
+
+_PROMPT_DIRS = None
+
+
+def setUpModule():
+    # Prompt files outside ComfyUI's input folder must be allowed explicitly.
+    # Most tests use temporary files, so allow the temporary folder.
+    global _PROMPT_DIRS
+    _PROMPT_DIRS = patch.dict(os.environ, {nodes.PROMPT_DIRS_ENV: tempfile.gettempdir()})
+    _PROMPT_DIRS.start()
+
+
+def tearDownModule():
+    _PROMPT_DIRS.stop()
 
 
 class EditablePromptTests(unittest.TestCase):
@@ -100,9 +115,11 @@ class EditablePromptTests(unittest.TestCase):
         result = self.node.expand("woman", search_replace="woman=male\nmale=a=b")
         self.assertEqual(result[0], ["a=b"])
 
-    def test_empty_replacement_deletes_text(self):
-        result = self.node.expand("A red hat.", search_replace="red=")
-        self.assertEqual(result[0], ["A  hat."])
+    def test_empty_replacement_deletes_text_and_cleans_spacing(self):
+        self.assertEqual(self.node.expand("A red hat.", search_replace="red=")[0], ["A hat."])
+        self.assertEqual(self.node.expand("photo, mature, woman", search_replace="mature=")[0], ["photo, woman"])
+        # Without a deletion, unrelated spacing stays exactly as written.
+        self.assertEqual(self.node.expand("A  red hat.", search_replace="red=blue")[0], ["A  blue hat."])
 
     def test_comments_and_blank_replacement_rule_lines_are_ignored(self):
         result = self.node.expand("woman", search_replace="# comment\n\nwoman=male\n")
@@ -485,6 +502,164 @@ class EditablePromptTests(unittest.TestCase):
                     api_url="", model="", seed=0, temperature=0.7,
                     max_tokens=600, timeout=120,
                 ), (expected,))
+
+
+class ChoiceAndCleanupTests(unittest.TestCase):
+    def setUp(self):
+        self.node = nodes.WildcardLoRAPrompts()
+
+    def test_nested_choices_never_leak_braces(self):
+        results = {self.node.expand("a {red|{blue|green}} car", prompt_seed=seed)[1] for seed in range(64)}
+        self.assertEqual(results, {"a red car", "a blue car", "a green car"})
+        values = {self.node.expand("{look}", extra_tags="look={a|{b|{c|d}}}", prompt_seed=seed)[1] for seed in range(64)}
+        self.assertEqual(values, {"a", "b", "c", "d"})
+
+    def test_flat_choices_draw_exactly_as_before(self):
+        def single_pass(text, rng):
+            return nodes.CHOICE.sub(lambda match: rng.choice([part.strip() for part in match.group(1).split("|")]), text)
+
+        text = "A {small|large} {red|brown|black} bag, {day|night}, {|soft} light."
+        for seed in range(50):
+            expected = single_pass(text, random.Random(f"choices:{seed}"))
+            self.assertEqual(nodes.resolve_choices(text, random.Random(f"choices:{seed}")), expected)
+
+    def test_a_tag_can_complete_a_choice_group(self):
+        results = {self.node.expand("a {{hair}|bald} man", prompt_seed=seed)[1] for seed in range(32)}
+        self.assertEqual(results, {"a blonde man", "a bald man"})
+
+    def test_removed_tags_leave_no_stray_commas(self):
+        cases = {
+            "{type}, {hair}, photo": "blonde, photo",
+            "photo, {type}, {hair}": "photo, blonde",
+            "photo, {hair}, {type}": "photo, blonde",
+            "photo, {type}.": "photo.",
+            "1girl, {type}, {other}, smile\n{type}, outdoors": "1girl, smile\noutdoors",
+        }
+        for source, expected in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(self.node.expand(source, extra_tags="hair=blonde")[1], expected)
+
+    def test_an_empty_choice_cleans_like_an_empty_tag(self):
+        results = {self.node.expand("a {|red} car, {|soft} photo", prompt_seed=seed)[1] for seed in range(32)}
+        self.assertEqual(results, {"a car, photo", "a red car, photo", "a car, soft photo", "a red car, soft photo"})
+
+    def test_prompts_without_removals_keep_their_formatting(self):
+        source = "photo,  , {hair}  hair"
+        self.assertEqual(self.node.expand(source, extra_tags="hair=red")[1], "photo,  , red  hair")
+
+    def test_undefined_tags_are_reported_with_a_hint(self):
+        with self.assertLogs(level="WARNING") as logs:
+            result = self.node.expand("{Hair} and {hiar}, {style}", extra_tags="hair=red", prefix="{trigger}")
+        self.assertEqual(result[1], "and")
+        message = "\n".join(logs.output)
+        self.assertIn("{Hair} (did you mean {hair}?)", message)
+        self.assertIn("{hiar} (did you mean {hair}?)", message)
+        self.assertIn("{style}", message)
+        self.assertIn("{trigger}", message)
+
+    def test_tags_defined_empty_are_removed_silently(self):
+        with self.assertNoLogs(level="WARNING"):
+            self.assertEqual(self.node.expand("A {type} woman.", extra_tags="type=")[1], "A woman.")
+
+
+class PromptSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.node = nodes.WildcardLoRAPrompts()
+
+    def comfy_input(self, directory):
+        folder_paths = types.SimpleNamespace(get_input_directory=lambda: str(directory))
+        return patch.dict(sys.modules, {"folder_paths": folder_paths})
+
+    def test_relative_paths_cannot_leave_the_input_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "input").mkdir()
+            (root / "secret.txt").write_text("private", encoding="utf-8")
+            with self.comfy_input(root / "input"), patch.dict(os.environ, {nodes.PROMPT_DIRS_ENV: ""}):
+                with self.assertRaisesRegex(ValueError, "inside the ComfyUI input folder"):
+                    self.node.expand("", prompt_file="../secret.txt")
+                with self.assertRaisesRegex(ValueError, nodes.PROMPT_DIRS_ENV):
+                    self.node.expand("", prompt_file=str(root / "secret.txt"))
+                # IS_CHANGED reads files too, so it applies the same rule.
+                with self.assertRaises(ValueError):
+                    self.node.IS_CHANGED(prompt_file="../secret.txt")
+
+    def test_absolute_paths_inside_input_or_allowed_folders_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "input" / "sets").mkdir(parents=True)
+            (root / "input" / "sets" / "a.txt").write_text("from input", encoding="utf-8")
+            (root / "library").mkdir()
+            (root / "library" / "b.txt").write_text("from library", encoding="utf-8")
+            with self.comfy_input(root / "input"):
+                with patch.dict(os.environ, {nodes.PROMPT_DIRS_ENV: ""}):
+                    self.assertEqual(self.node.expand("", prompt_file="sets/a.txt")[1], "from input")
+                    self.assertEqual(self.node.expand("", prompt_file=str(root / "input" / "sets" / "a.txt"))[1], "from input")
+                with patch.dict(os.environ, {nodes.PROMPT_DIRS_ENV: str(root / "library")}):
+                    self.assertEqual(self.node.expand("", prompt_file=str(root / "library" / "b.txt"))[1], "from library")
+
+    def test_oversized_prompt_files_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "big.txt"
+            file.write_text("x" * 20, encoding="utf-8")
+            with patch.object(nodes, "MAX_PROMPT_FILE_BYTES", 10), self.assertRaisesRegex(ValueError, "larger than"):
+                self.node.expand("", prompt_file=str(file))
+
+    def test_comment_lines_are_ignored_in_both_separator_modes(self):
+        source = "# portraits\nFirst line\n  # a note inside the prompt\nsecond line\n\n# city\nCity scene"
+        self.assertEqual(self.node.expand(source, mode="all prompts")[0], ["First line\nsecond line", "City scene"])
+        self.assertEqual(
+            self.node.expand("# list\nFirst\n# skip\nSecond", prompt_separator="one per line", mode="all prompts")[0],
+            ["First", "Second"],
+        )
+        with self.assertRaisesRegex(ValueError, "at least one prompt"):
+            self.node.expand("# only a comment")
+
+    def test_fallback_prompt_is_only_requested_when_wildcards_are_off(self):
+        self.assertTrue(self.node.INPUT_TYPES()["optional"]["fallback_prompt"][1]["lazy"])
+        self.assertEqual(self.node.check_lazy_status(enabled=True, fallback_prompt=None), [])
+        self.assertEqual(self.node.check_lazy_status(enabled=False, fallback_prompt=None), ["fallback_prompt"])
+        # Unevaluated lazy inputs arrive as None.
+        self.assertEqual(self.node.expand("A {hair} portrait", fallback_prompt=None)[1], "A blonde portrait")
+        self.assertEqual(self.node.expand("A portrait", enabled=False, fallback_prompt=None)[1], "")
+
+    def test_undefined_tags_inside_braces_leave_no_empty_braces(self):
+        with self.assertLogs(level="WARNING"):
+            self.assertEqual(self.node.expand("{{masterpiece}}, 1girl, smile", extra_tags="")[1], "1girl, smile")
+
+
+class SequentialStatusTests(unittest.TestCase):
+    def setUp(self):
+        self.node = nodes.WildcardLoRAPrompts()
+
+    def test_node_function_is_run(self):
+        self.assertEqual(self.node.FUNCTION, "run")
+
+    def test_sequential_run_reports_status_for_the_node_label(self):
+        result = self.node.run("First\n\nSecond\n\nThird", mode="sequential prompt", sequence_index=1)
+        self.assertEqual(result["result"], (["Second"], "Second", 1))
+        self.assertEqual(result["ui"], {"wildcard_sequence": [
+            {"index": 1, "count": 3, "prompt": 2, "finished": False, "repeat": False},
+        ]})
+        wrapped = self.node.run("First\n\nSecond", mode="sequential prompt", sequence_index=5, repeat_list=True)
+        self.assertEqual(wrapped["ui"]["wildcard_sequence"][0]["prompt"], 2)
+
+    def test_finished_sequence_logs_why_the_run_was_skipped(self):
+        class ExecutionBlocker:
+            def __init__(self, message):
+                self.message = message
+
+        graph = types.SimpleNamespace(ExecutionBlocker=ExecutionBlocker)
+        with patch.dict(sys.modules, {"comfy_execution.graph": graph}), self.assertLogs(level="WARNING") as logs:
+            result = self.node.run("First\n\nSecond", mode="sequential prompt", sequence_index=2)
+        self.assertIsInstance(result["result"][1], ExecutionBlocker)
+        self.assertEqual(result["ui"]["wildcard_sequence"][0], {"index": 2, "count": 2, "prompt": None, "finished": True, "repeat": False})
+        self.assertIn("Sequence finished", "\n".join(logs.output))
+
+    def test_other_modes_return_plain_results(self):
+        for arguments in ({"mode": "random prompt"}, {"mode": "all prompts"}, {"mode": "sequential prompt", "enabled": False}):
+            with self.subTest(arguments=arguments):
+                self.assertEqual(self.node.run("First\n\nSecond", **arguments), self.node.expand("First\n\nSecond", **arguments))
 
 
 if __name__ == "__main__":

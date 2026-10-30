@@ -64,6 +64,57 @@ class PromptUtilsTests(unittest.TestCase):
     def test_preservation_instruction_is_empty_without_features(self):
         self.assertEqual(build_preservation_instruction([], []), "")
 
+    def test_enforce_keep_terms_restores_casing_and_spacing_in_place(self):
+        result = enforce_keep_terms(
+            "A cyberrealistic portrait of an ohwx  woman, CYBERREALISTIC style.",
+            ["CyberRealistic", "OHWX woman"],
+        )
+        self.assertEqual(result, "A CyberRealistic portrait of an OHWX woman, CyberRealistic style.")
+
+    def test_overlapping_keep_terms_preserve_both_exact_spellings(self):
+        for terms in (["OHWX Woman", "woman"], ["woman", "OHWX Woman"]):
+            with self.subTest(terms=terms):
+                result = enforce_keep_terms("A portrait of an ohwx  woman.", terms)
+                self.assertEqual(result, "A portrait of an OHWX Woman, woman.")
+
+    def test_compatible_overlapping_terms_need_no_duplicates(self):
+        result = enforce_keep_terms("An OHWX WOMAN in a studio.", ["woman", "OHWX woman"])
+        self.assertEqual(result, "An OHWX woman in a studio.")
+
+    def test_overlapping_terms_keep_separate_existing_occurrences(self):
+        result = enforce_keep_terms("OHWX woman beside another WOMAN.", ["OHWX Woman", "woman"])
+        self.assertEqual(result, "OHWX Woman beside another woman.")
+
+    def test_overlapping_term_matches_use_complete_boundaries(self):
+        result = enforce_keep_terms("A cyberrealistic style, not a cart.", ["CyberRealistic Style", "style", "art"])
+        self.assertEqual(result, "A CyberRealistic Style, not a cart, style, art.")
+
+    def test_restoring_overlapping_terms_is_idempotent(self):
+        terms = ["OHWX Woman", "woman"]
+        first = enforce_keep_terms("OHWX WOMAN", terms)
+        self.assertEqual(enforce_keep_terms(first, terms), first)
+
+    def test_sanitize_output_removes_common_preambles(self):
+        for raw in (
+            "Here's the prompt: a cat on a mat",
+            "Here’s your final prompt: a cat on a mat",
+            "Sure! Here is the enhanced prompt:\n\na cat on a mat",
+            "Certainly, here is the refined image prompt - a cat on a mat",
+            "Image generation prompt: a cat on a mat",
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(sanitize_output(raw), "a cat on a mat")
+
+    def test_sanitize_output_keeps_words_that_only_start_with_prompt(self):
+        self.assertEqual(sanitize_output("Prompt-engineered look, a cat"), "Prompt-engineered look, a cat")
+        self.assertEqual(sanitize_output("Sure footed goat on a cliff"), "Sure footed goat on a cliff")
+
+    def test_extract_constraints_ignores_counts_without_an_object(self):
+        self.assertEqual(
+            extract_constraints("one of the women holds two red apples"),
+            ["two red apples"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -230,6 +230,9 @@ class CyberdeliaPromptEngineerChain(CyberdeliaZEngineer):
 
         current = original
         stage_outputs = []
+        # Until a stage produces output, the next stage receives the original
+        # alone instead of the same text twice under two headings.
+        produced = False
         for index, system_prompt in enumerate(prompts, start=1):
             instructions = str(system_prompt or "").strip()
             if not instructions:
@@ -238,9 +241,9 @@ class CyberdeliaPromptEngineerChain(CyberdeliaZEngineer):
                 continue
 
             stage_input = (
-                original
-                if index == 1
-                else self._stage_input(original, current, handoff_mode)
+                self._stage_input(original, current, handoff_mode)
+                if produced
+                else original
             )
             try:
                 current = self._generate_final_text(
@@ -259,12 +262,16 @@ class CyberdeliaPromptEngineerChain(CyberdeliaZEngineer):
                     "stop",
                     retries,
                 )
+                produced = True
             except Exception:
                 if normalized_error_mode == "stop":
                     raise
                 if normalized_error_mode == "empty":
-                    current = ""
+                    # Stop here: later stages with "original + previous output"
+                    # would otherwise still produce a non-empty final prompt.
                     print(f"[Prompt Chain] Stage {index} failed — returning empty text")
+                    stage_outputs.append("")
+                    return self._result("", stage_outputs)
                 else:
                     print(
                         f"[Prompt Chain] Stage {index} failed — keeping the previous output"

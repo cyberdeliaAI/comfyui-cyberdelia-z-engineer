@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 
+# Release packages built locally
+*.zip

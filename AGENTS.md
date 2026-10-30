@@ -69,6 +69,26 @@ local Danbooru tag validation.
   advance it themselves. `repeat_list` defaults off; exhausted sequences emit
   a silent ComfyUI `ExecutionBlocker`, never an empty generation prompt.
   Preserve legacy `random prompt` and `all prompts` modes and widget order.
+- The wildcard `FUNCTION` is `run()`, which wraps `expand()` and adds a
+  `wildcard_sequence` UI status in sequential mode (label, console warning and
+  one notice when the list is finished). `expand()` keeps returning the tuple.
+- The frontend advances the value ComfyUI actually receives: promoted subgraph
+  inputs resolve to the host widget (one advance per host instance), repeated
+  callbacks for shared subgraph definitions advance once per submission, and
+  partial runs advance only the host instances that feed a selected node.
+  Shared source widgets advance once per submission across wildcard nodes;
+  active Primitive value controls retain ownership of their counters.
+- Choice groups resolve innermost first; cleanup of spacing and commas runs
+  only after a removal, so prompts without removals keep their formatting.
+- Danbooru sub-phrase recovery skips stop words, artist tags and aliases that
+  expand a fragment, and never uses fuzzy matching; complete candidates keep
+  the existing validation, including fuzzy matching.
+- Wildcard `prompt_file` paths are untrusted like API URLs: they must resolve
+  inside ComfyUI's input folder or a folder in
+  `CYBERDELIA_Z_ENGINEER_PROMPT_DIRS`, and files are limited to 10 MB.
+- `fallback_prompt` is a lazy input, requested only while wildcards are off.
+- Publishing to the Comfy Registry runs both Python and frontend test suites
+  in the publish job before uploading; a failed suite prevents the upload.
 - Preserve endpoint allowlisting and rejection of HTTP redirects.
   `CYBERDELIA_Z_ENGINEER_ALLOWED_API_URLS` takes precedence over the
   `OPENAI_API_BASE` fallback; explicit workflow URLs remain subject to the policy.

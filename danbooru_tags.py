@@ -36,6 +36,14 @@ _COUNT_TAG_PATTERN = re.compile(
     r"|multiple_others)$"
 )
 _CATEGORY_ORDER = {4: 1, 3: 2, 1: 3, 0: 4, 5: 5}
+ARTIST_CATEGORY = 1
+# Single words that never form a useful tag on their own when recovered from a
+# phrase. Without this, "wearing a dress" recovers "a" as the tag a_(phrase).
+_RECOVERY_STOP_WORDS = frozenset({
+    "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "with", "by",
+    "for", "from", "is", "are", "as", "into", "onto", "her", "his", "its",
+    "their", "this", "that",
+})
 
 
 def normalize_tag(tag):
@@ -184,7 +192,13 @@ class DanbooruTagDB:
         return None
 
     def extract(self, candidate, fuzzy_cutoff=0.0):
-        """Recover real tags embedded in an otherwise invalid phrase."""
+        """Recover real tags embedded in an otherwise invalid phrase.
+
+        Fragments use exact, alias and word-form lookups only. ``fuzzy_cutoff``
+        is accepted for compatibility but not applied: a fuzzy search over the
+        whole vocabulary for every sub-phrase took seconds per candidate and
+        matched fragments to unrelated tags. Complete candidates still use it.
+        """
         tokens = [
             word
             for word in re.split(r"\s+", str(candidate or "").strip().lower())
@@ -199,12 +213,15 @@ class DanbooruTagDB:
             matched = False
             for end in range(len(tokens), index, -1):
                 phrase = "_".join(tokens[index:end])
+                if end - index == 1 and phrase in _RECOVERY_STOP_WORDS:
+                    continue
                 match = (
-                    self.resolve(phrase, fuzzy_cutoff)
+                    self.resolve(phrase)
                     if end - index > 1
                     else self._lookup(phrase)
                 )
-                if match:
+                # Rejecting a match lets a shorter phrase at this position try.
+                if match and self._usable_recovered_tag(match, phrase):
                     found.append(match)
                     index = end
                     matched = True
@@ -212,6 +229,19 @@ class DanbooruTagDB:
             if not matched:
                 index += 1
         return found
+
+    def _usable_recovered_tag(self, canonical, phrase):
+        """Reject recovered sub-tags that would change the meaning or style.
+
+        A phrase fragment is weak evidence. Artist tags change the style (for
+        example "a flowing dress" contains the artist tag a_flow), and an
+        alias that expands a fragment into a more specific tag (sitting_on ->
+        sitting_on_person, from "sitting on the windowsill") changes the
+        meaning. Complete candidates are not affected by these rules.
+        """
+        if self.canonical[canonical][1] == ARTIST_CATEGORY:
+            return False
+        return not (canonical != phrase and canonical.startswith(f"{phrase}_"))
 
     def validate(
         self,

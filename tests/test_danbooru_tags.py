@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+import unittest.mock
 
 from _requests_stub import ensure_requests
 
@@ -111,6 +112,47 @@ class DanbooruTagTests(unittest.TestCase):
     def test_invalid_output_format_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "tag_format"):
             self.database.validate("1girl", tag_format="hyphens")
+
+    def test_recovery_skips_single_stop_words(self):
+        # "a" is an alias of a_(phrase); it must not be recovered from prose.
+        self.assertEqual(
+            self.database.extract("girl standing in a bright sunny field of yellow flowers"),
+            ["standing", "field", "yellow_flower"],
+        )
+
+    def test_recovery_never_adds_artist_tags(self):
+        # "a flowing" resolves to the artist tag a_flow; a shorter phrase is tried.
+        recovered = self.database.extract("wearing a flowing summer dress with lace")
+        self.assertEqual(recovered, ["sundress", "lace"])
+        output, _kept, dropped = self.database.validate(
+            "1girl, wearing a flowing summer dress with lace"
+        )
+        self.assertEqual(output, "1girl, sundress, lace")
+        self.assertEqual(dropped, ["wearing a flowing summer dress with lace"])
+
+    def test_recovery_rejects_aliases_that_expand_a_fragment(self):
+        # sitting_on is an alias of sitting_on_person, which changes the meaning.
+        self.assertEqual(
+            self.database.extract("a cat sitting on the windowsill at night"),
+            ["cat", "sitting", "windowsill", "night"],
+        )
+        # Ordinary aliases and character/copyright tags are still recovered.
+        self.assertEqual(
+            self.database.extract("the legend of zelda link playing ocarina"),
+            ["the_legend_of_zelda", "link", "playing", "ocarina"],
+        )
+
+    def test_complete_candidates_are_not_affected_by_recovery_rules(self):
+        output, _kept, dropped = self.database.validate("a_flow, sitting on", sort_tags=False)
+        self.assertEqual(output, "a flow, sitting on person")
+        self.assertEqual(dropped, [])
+
+    def test_fuzzy_matching_applies_to_complete_candidates_only(self):
+        output, _kept, _dropped = self.database.validate("1girl, blue eyse", fuzzy_cutoff=0.85)
+        self.assertEqual(output, "1girl, blue eyes")
+        with unittest.mock.patch.object(tags_module.difflib, "get_close_matches") as fuzzy:
+            self.database.extract("wearing a flowing summer dress with lace", fuzzy_cutoff=0.85)
+        fuzzy.assert_not_called()
 
 
 if __name__ == "__main__":

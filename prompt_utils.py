@@ -9,13 +9,18 @@ CHATML_TAG_PATTERN = re.compile(
     r"<\|im_(?:start|end)\|>(?:system|user|assistant)?",
     re.IGNORECASE,
 )
+# A label separator is a colon, or a dash followed by a space, so words such
+# as "Prompt-engineered" at the start of a real prompt are kept.
+LABEL_SEPARATOR = r"(?::|[-–—](?=\s))"
 PROMPT_PREFIX_PATTERN = re.compile(
-    r"^\s*(?:(?:here\s+is\s+)?(?:the\s+)?)?"
-    r"(?:final\s+|enhanced\s+|positive\s+)?(?:image\s+)?prompt\s*[:\-]\s*",
+    r"^\s*(?:(?:sure|certainly|of\s+course|okay|ok|absolutely)\b[!.,:]?\s*)?"
+    r"(?:here(?:\s+is|'s|’s)\s+)?(?:(?:the|your|my|an?)\s+)?"
+    r"(?:(?:final|enhanced|improved|refined|revised|rewritten|optimized|detailed|positive)\s+)*"
+    r"(?:image(?:[-\s]generation)?\s+)?prompt\b\s*" + LABEL_SEPARATOR + r"\s*",
     re.IGNORECASE,
 )
 NEGATIVE_SECTION_PATTERN = re.compile(
-    r"\bnegative\s+prompt\s*[:\-].*$",
+    r"\bnegative\s+prompt\s*" + LABEL_SEPARATOR + r".*$",
     re.IGNORECASE | re.DOTALL,
 )
 CODE_FENCE_PATTERN = re.compile(r"```(?:[A-Za-z0-9_+.-]+)?")
@@ -171,6 +176,9 @@ def extract_constraints(seed):
             words.pop()
         if len(words) > 2 and words[-1].casefold().endswith("ing"):
             words.pop()
+        if words[1].casefold() in PHRASE_STOP_WORDS:
+            # "one of the women" or "two in the morning" name no counted object.
+            continue
         terms.append(" ".join(words))
 
     for match in COLOR_PATTERN.finditer(seed):
@@ -244,7 +252,29 @@ def enforce_constraints(prompt, constraints):
 
 
 def enforce_keep_terms(prompt, keep_terms):
-    """Guarantee exact user-provided terms with original casing."""
+    """Guarantee exact user-provided terms with original casing.
+
+    A term the model rewrote with other casing or spacing ("cyberrealistic"
+    for "CyberRealistic") is restored in place; casing matters for trigger
+    words with case-sensitive text encoders. Absent terms are appended.
+    """
     keep_terms = _unique_terms(keep_terms or [])
-    missing = [term for term in keep_terms if not contains_term(prompt, term)]
+    prompt = normalize_whitespace(prompt)
+    matches = []
+    for order, term in enumerate(keep_terms):
+        matches.extend((match.start(), match.end(), order, term)
+                       for match in _term_pattern(term).finditer(prompt))
+    # Resolve overlapping matches against the original text. Longer terms win;
+    # replacing shorter ones afterwards must not change a restored trigger.
+    selected = []
+    for start, end, order, term in sorted(matches, key=lambda item: (item[0] - item[1], item[0], item[2])):
+        if not any(start < other_end and other_start < end for other_start, other_end, _, _ in selected):
+            selected.append((start, end, order, term))
+    for start, end, _order, term in sorted(selected, reverse=True):
+        prompt = prompt[:start] + term + prompt[end:]
+    # Conflicting spellings can require separate occurrences: "OHWX Woman"
+    # and "woman" must both survive exactly, independent of input order.
+    missing = [term for term in keep_terms if not any(
+        match.group(0) == term for match in _term_pattern(term).finditer(prompt)
+    )]
     return _append_missing(prompt, missing, ", ")

@@ -33,7 +33,19 @@ Existing workflows can bypass the LLM with the built-in passthrough toggle.
 
 The separate **Cyberdelia Danbooru Prompt** node converts a normal scene description into real Danbooru tags, validates them against a bundled local vocabulary, and optionally wraps them in an editable prompt template.
 
-## Release 1.10.0
+## Release 1.11.0
+
+- Improve sequential wildcard handling for promoted subgraph inputs, shared instances, partial runs and shared Primitive counters. Preserve active Primitive controls and advance each shared source once per submission.
+- Show sequential progress and an end-of-list notice with a reset action. Evaluate a connected `fallback_prompt` only while wildcards are off.
+- Support nested choice groups and full-line prompt comments; warn about undefined tags and clean spacing/commas after removals.
+- Restrict server-side `prompt_file` reads to ComfyUI/input or folders in `CYBERDELIA_Z_ENGINEER_PROMPT_DIRS`, with a 10 MB file limit. Existing lists elsewhere require that environment setting or the Load .txt button.
+- Make Danbooru sub-phrase recovery more conservative, improve output cleaning and constraint extraction, and preserve the exact spelling of overlapping keep terms.
+- Stop prompt chains on an `empty` stage error and avoid duplicating the original input before any stage produces output.
+- Require both Python and frontend test suites to pass before Registry upload; exclude local article assets and generated output from Registry packages.
+
+Existing node IDs, input/widget positions, output indices and random/all-prompts modes are preserved. Restart ComfyUI and refresh the browser after updating. Validation: 213 Python tests and 21 frontend tests pass; real ComfyUI/model execution is not covered by these mocked tests.
+
+### Release 1.10.0
 
 - **Sequential prompt** mode sends one prompt in file/text order per queued workflow, so each prompt completes the generation, upscale and save chain before the next queued run.
 - **Repeat list** defaults to off. With 20 prompts and 30 runs, the final 10 skip the dependent generation chain; turning it on repeats prompts 1–10 for those runs.
@@ -106,9 +118,19 @@ Restart ComfyUI after installation or updating.
 
 ## Wildcard Prompts for LoRA testing
 
-Add **Cyberdelia Wildcard Prompts** from `Cyberdelia/Prompt`. Paste prompt templates or click **Load .txt**. The `prompt_file` field can instead read a UTF-8 `.txt` file on the ComfyUI computer; relative paths start in `ComfyUI/input`. A non-empty path overrides pasted text. Loading a file with the button clears that path and stores its text in the workflow.
+Add **Cyberdelia Wildcard Prompts** from `Cyberdelia/Prompt`. Paste prompt templates or click **Load .txt**. The `prompt_file` field can instead read a UTF-8 `.txt` file of at most 10 MB on the ComfyUI computer; relative paths start in `ComfyUI/input`. A non-empty path overrides pasted text. Loading a file with the button clears that path and stores its text in the workflow.
 
-Set `prompt_separator` to **blank line** for prompts that can span several lines, or **one per line** for one prompt on each non-empty line. Define editable tags in `extra_tags`, one `name=value` per line:
+For security, `prompt_file` only reads files inside `ComfyUI/input`, so a shared or `--listen` server cannot be used to read other text files. To keep prompt lists in another folder, allow it before starting ComfyUI. Separate several folders with `;` on Windows or `:` on macOS and Linux:
+
+```bat
+set "CYBERDELIA_Z_ENGINEER_PROMPT_DIRS=D:\AI\prompt-lists"
+```
+
+```bash
+export CYBERDELIA_Z_ENGINEER_PROMPT_DIRS="$HOME/prompt-lists"
+```
+
+Set `prompt_separator` to **blank line** for prompts that can span several lines, or **one per line** for one prompt on each non-empty line. Lines starting with `#` are comments in prompts, files, `extra_tags` and `search_replace`. A comment line inside a multi-line prompt does not split it. Define editable tags in `extra_tags`, one `name=value` per line:
 
 ```text
 hair=blonde
@@ -116,7 +138,9 @@ type=mature
 trigger=my_lora_keyword
 ```
 
-Use `{hair}`, `{type}`, or any other tag name in the templates. Empty or missing tags are removed, with surrounding spacing cleaned. For example, `A portrait of a {type} woman.` becomes `A portrait of a woman.` when `type` is empty or omitted.
+Use `{hair}`, `{type}`, or any other tag name in the templates. Empty or missing tags are removed, with surrounding spacing and leftover commas cleaned. For example, `A portrait of a {type} woman.` becomes `A portrait of a woman.` and `{type}, {hair}, photo` becomes `blonde, photo` when `type` is empty or omitted.
+
+Tag names are case-sensitive. A tag that is used in a template but defined nowhere is still removed, and the ComfyUI console logs a warning with a suggestion, such as `{hiar} (did you mean {hair}?)`. To remove a tag on purpose without a warning, define it with an empty value (`type=`).
 
 ### Random choices
 
@@ -133,13 +157,13 @@ search_replace:
 straight hair={red|brown|black} hair
 ```
 
-Each tag value is chosen once per node execution, so repeated `{hair}` references use the same value, including in the prefix and across **all prompts**. Each replacement rule is also chosen once and uses that replacement for all its matches. Direct choice groups in prompt templates are drawn separately for each occurrence. Search text stays literal. Use flat choice groups; nested groups are not supported, and tag values are not recursively substituted.
+Each tag value is chosen once per node execution, so repeated `{hair}` references use the same value, including in the prefix and across **all prompts**. Each replacement rule is also chosen once and uses that replacement for all its matches. Direct choice groups in prompt templates are drawn separately for each occurrence. Search text stays literal. Choice groups can be nested, such as `{red|{dark|light} brown}`; the innermost group is chosen first. A tag can complete a choice group, as in `{{hair}|bald}`. Tag values are not recursively substituted. An empty option, as in `{|soft}`, is cleaned like an empty tag.
 
 `prompt_seed` controls both these choices and prompt-block selection. A fixed seed with the same inputs repeats the result; **randomize** draws again each run, including in **all prompts** mode. Choice draws do not change which prompt block a seed selects. A new draw can repeat a previous result.
 
 Optional controls:
 
-- `search_replace`: one `search=replacement` per line, such as `woman=male`. Rules run after filling tags. Whole-word matching and case-insensitive matching are the defaults; both can be changed.
+- `search_replace`: one `search=replacement` per line, such as `woman=male`. Rules run after filling tags. Whole-word matching and case-insensitive matching are the defaults; both can be changed. An empty replacement (`mature=`) deletes the match and cleans the spacing and commas around it.
 - `prefix`: text or a LoRA trigger to prepend, such as `{trigger}`. A blank prefix is ignored. The prefix is added after search/replace.
 - `mode`: **random prompt** sends one randomly selected prompt per run. **sequential prompt** sends one prompt in file/text order per queued workflow. **all prompts** preserves the existing list output: every prompt in one workflow, processed per node rather than completing the entire chain for each prompt first.
 - `prompt_seed`: selects the prompt and fills choice groups independently of the image seed. Use **randomize** to draw again each run, or **fixed** to repeat the result. A random draw can repeat a previous prompt or choice.
@@ -150,11 +174,15 @@ Connect **prompts** to the `text` input of Prompt Engineer — Text or Condition
 
 Choose **sequential prompt**, set `sequence_index` to **0** (or click **Reset sequence**), and set the Run count to the number of prompts. With 20 prompts and 20 runs, each queued workflow receives one prompt and completes its generation, upscale and save chain. Use an image/latent batch size of **1** for one image per prompt.
 
-- `repeat_list` defaults to **off**. With 20 prompts and 30 runs, the first 20 use prompts 1–20; the final 10 silently skip nodes dependent on the prompt outputs. They remain queue entries; independent workflow branches may still execute.
+- `repeat_list` defaults to **off**. With 20 prompts and 30 runs, the first 20 use prompts 1–20; the final 10 skip nodes dependent on the prompt outputs. They remain queue entries; independent workflow branches may still execute.
+- The **Reset sequence** button shows the last result, such as `Reset sequence (last: 3/20)`. When a run is skipped because the list is finished, the button shows `list finished`, the ComfyUI console logs a warning, and a notice with a reset action appears once. Because `sequence_index` is saved in the workflow, a reopened workflow can still be at the end of its list: reset it before running again.
 - Turn `repeat_list` **on** to wrap around: runs 21–30 use prompts 1–10 again.
 - `sequence_index` is zero-based and advances after each successful queue submission in the ComfyUI frontend, including each entry in Run's count. It records the next index to queue and is saved in the workflow. Reset it before starting a fresh sequence or after editing the prompt source; loading a file with **Load .txt** resets it automatically.
 - Random/all-prompts modes and wildcards-off passthrough do not advance the index. `prompt_seed` controls choices independently and can still randomize between runs.
 - Already queued entries retain their submitted index. Resetting does not rewrite the queue; canceled or failed runs do not rewind the index. Set it to the desired prompt index to retry.
+- Subgraphs are supported. When `mode`, `enabled`, or `sequence_index` is promoted to the subgraph node, the promoted values are used and advanced. Every instance of a shared subgraph advances once per run.
+- **Queue selected output nodes** advances the index only when a selected node uses this wildcard node, so a partial run of another branch does not skip a prompt.
+- When another node's output feeds `sequence_index`, that node owns the value and the frontend does not change it. A legacy Primitive node in **fixed** mode is advanced once per submission, even when several wildcard nodes share it. Its own increment/decrement/randomize controls remain in charge when enabled.
 - API clients must supply and increment `sequence_index` themselves. End-of-list skipping requires ComfyUI's `ExecutionBlocker` support. Older ComfyUI installations retain random/all-prompts behavior, but must be updated to use skipping.
 
 ### Turn wildcards on or off without reconnecting
@@ -162,7 +190,7 @@ Choose **sequential prompt**, set `sequence_index` to **0** (or click **Reset se
 - **`enabled` on**: send the filled wildcard prompt(s).
 - **`enabled` off**: send `fallback_prompt` exactly once, unchanged. Files, tags, replacements, prefix, separator, and selection mode are ignored, including during file-change checks.
 
-Enter your normal prompt in `fallback_prompt`. Alternatively, convert `fallback_prompt` to an input and connect the `prompt` output of **Cyberdelia Prompt Controls**. This lets you keep your normal prompt in the Controls node. Turning wildcards off with an empty fallback sends one empty prompt.
+Enter your normal prompt in `fallback_prompt`. Alternatively, convert `fallback_prompt` to an input and connect the `prompt` output of **Cyberdelia Prompt Controls**. This lets you keep your normal prompt in the Controls node. Turning wildcards off with an empty fallback sends one empty prompt. A node connected to `fallback_prompt` only runs while wildcards are off, so an LLM node there costs nothing during wildcard runs.
 
 The wildcard switch is independent of Prompt Engineer's LLM/passthrough switch. Leave Prompt Engineer in **passthrough (raw)** to test the selected prompt directly without an LLM. Enable its LLM mode when you want it to rewrite either the wildcard or normal prompt.
 
@@ -190,7 +218,7 @@ Use **validate tags** to check an existing Danbooru prompt and convert accepted 
 
 The editable `prompt_template` field is the only template control. Keep it as `{prompt}` for tags only, or add the desired model anchors manually, for example `masterpiece, best_quality, {prompt}`. If `{prompt}` is omitted, the validated tags are appended to the entered template text.
 
-The node uses the same API URL normalization, automatic model discovery, retries, and visible error handling as Prompt Engineer. Fuzzy matching is disabled by default because approximate matches can change meaning; values of `0.85` or higher are the safest starting point when it is needed.
+The node uses the same API URL normalization, automatic model discovery, retries, and visible error handling as Prompt Engineer. Fuzzy matching is disabled by default because approximate matches can change meaning; values of `0.85` or higher are the safest starting point when it is needed. It applies to complete candidates, such as a misspelled `blue eyse`, not to fragments recovered from a phrase.
 
 The default system instruction is tuned for Illustrious-based SDXL models. It asks the LLM for visible content tags only; quality, resolution, score, and rating anchors are left to the separate prompt template so they are not filtered, reordered, or duplicated.
 
@@ -205,6 +233,8 @@ The default system instruction is tuned for Illustrious-based SDXL models. It as
 `tag_format=spaces` produces `1girl, blue eyes, long hair`. `tag_format=underscores` produces `1girl, blue_eyes, long_hair`. Template text is left unchanged, so fixed model syntax such as Pony's `score_9` remains intact.
 
 Strict validation can recover a known sub-tag while removing an unknown modifier from a compound phrase. Such partial recovery is reported in `dropped_tags`; disable strict validation when retaining every LLM candidate intact is more important than vocabulary precision.
+
+Recovery from a phrase is deliberately conservative. Single words such as `a` or `the` are never recovered, artist tags are never recovered (`a flowing dress` does not become the artist tag `a_flow`), and an alias that expands a fragment into a more specific tag is skipped (`sitting on the windowsill` does not become `sitting on person`). Complete comma-separated candidates are validated as before.
 
 ## Text node — no CLIP
 
@@ -244,7 +274,9 @@ The first output is always `final_prompt`. The five additional outputs expose
 the result after each stage for debugging or alternate workflow branches.
 Inactive stage outputs are empty. With `fallback_input`, a failed stage keeps
 the last successful result and the chain continues; `stop` aborts immediately,
-and `empty` replaces the failed stage with an empty string.
+and `empty` ends the chain at the failed stage with an empty final prompt.
+Until a stage has produced output, the next stage receives the original prompt
+alone, also in `original + previous output` mode.
 
 For image-to-prompt chaining, run the image through **Prompt Engineer — Text**
 in Vision mode first and connect its prompt output to the Chain node. This keeps
@@ -368,7 +400,7 @@ Presets intentionally contain no model or sampling settings.
 m4rty style, OHWX woman, neon_glow
 ```
 
-The node asks the LLM to retain them and deterministically appends any missing terms with their original casing.
+The node asks the LLM to retain them and deterministically appends any missing terms with their original casing. A term the LLM kept with other casing or spacing, such as `ohwx  woman`, is restored in place to `OHWX woman`, because case-sensitive text encoders treat those as different words. Longer overlapping terms take precedence during restoration. If the required spellings conflict, such as `OHWX Woman` and `woman`, the shorter term is included separately so both remain exact.
 
 `preserve_constraints` is off by default. When enabled, it applies the same two-stage instruction and post-check to conservative constraints extracted from the seed:
 
@@ -380,7 +412,7 @@ The node asks the LLM to retain them and deterministically appends any missing t
 
 It does not add model-specific instructions, force a target word count, or pad short prompts.
 
-`clean_output` is on by default. It removes technical model artefacts but does not remove camera brands or rewrite the prompt style.
+`clean_output` is on by default. It removes technical model artefacts and preambles such as `Sure! Here is the enhanced prompt:`, but does not remove camera brands or rewrite the prompt style. A label is only removed when it ends in a colon or a spaced dash, so a prompt starting with `Prompt-engineered` stays intact.
 
 ## Error handling and retries
 
